@@ -1,6 +1,8 @@
 #ifndef WORLD_H
 #define WORLD_H
 
+#include <string.h>  // ДОБАВЛЕНО
+#include <math.h>    // ДОБАВЛЕНО
 #include "engine.h"
 
 static void init_world(struct engine* eng) {
@@ -9,7 +11,6 @@ static void init_world(struct engine* eng) {
     // Плоский мир из травы с ямой
     for (int x = 0; x < WORLD_SIZE_X; x++) {
         for (int z = 0; z < WORLD_SIZE_Z; z++) {
-            // Делаем яму в центре для интереса
             int dx = x - WORLD_SIZE_X/2;
             int dz = z - WORLD_SIZE_Z/2;
             float dist = sqrtf(dx*dx + dz*dz);
@@ -28,11 +29,10 @@ static void init_world(struct engine* eng) {
         }
     }
     
-    // Небольшой домик для красоты
+    // Небольшой домик
     int hx = WORLD_SIZE_X/2 + 4;
     int hz = WORLD_SIZE_Z/2;
     
-    // Стены
     for (int x = hx-2; x <= hx+2; x++) {
         for (int z = hz-2; z <= hz+2; z++) {
             for (int y = 0; y < 3; y++) {
@@ -43,7 +43,7 @@ static void init_world(struct engine* eng) {
             }
         }
     }
-    // Крыша
+    
     for (int x = hx-3; x <= hx+3; x++) {
         for (int z = hz-3; z <= hz+3; z++) {
             if (abs(x-hx) <= 2 && abs(z-hz) <= 2) continue;
@@ -51,7 +51,6 @@ static void init_world(struct engine* eng) {
         }
     }
     
-    // Дорожка из песка
     for (int i = 0; i < 8; i++) {
         int x = hx + 3 + i;
         int z = hz;
@@ -76,7 +75,6 @@ static inline void world_set_block(struct engine* eng, int wx, int wy, int wz, u
     eng->blocks[wx][wy][wz] = val;
     eng->meshDirty = true;
     
-    // Сохраняем для отката (без генерации)
     if (eng->editCount < MAX_EDITS) {
         eng->edits[eng->editCount].wx = wx;
         eng->edits[eng->editCount].wy = wy;
