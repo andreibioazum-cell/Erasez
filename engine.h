@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <math.h>
 
-// ===== НАСТРОЙКИ УПРАВЛЕНИЯ =====
 #define JOY_RADIUS      80.0f
 #define JOY_X_OFFSET    130.0f
 #define JOY_Y_OFFSET    130.0f
@@ -22,8 +21,8 @@
 #define PLACE_BTN_X     80.0f
 #define PLACE_BTN_Y     190.0f
 
-// ===== ФИЗИКА =====
 #define PI              3.14159265f
+
 #define PLAYER_W        0.3f
 #define EYE_H           1.6f
 #define HEAD_MARGIN     0.2f
@@ -34,12 +33,10 @@
 #define TERM_VEL       -0.35f
 #define PLAYER_SPEED    0.09f
 
-// ===== МИР (без генерации) =====
 #define WORLD_SIZE_X    32
 #define WORLD_SIZE_Y    16
 #define WORLD_SIZE_Z    32
 
-// ===== БЛОКИ =====
 #define BLOCK_AIR       0
 #define BLOCK_GRASS     1
 #define BLOCK_DIRT      2
@@ -48,12 +45,10 @@
 #define BLOCK_LEAVES    5
 #define BLOCK_SAND      6
 
-// ===== РЕНДЕРИНГ =====
 #define RAY_DIST        8.0f
 #define RAY_STEP        0.02f
 #define MAX_EDITS       1024
 
-// Флаги граней
 #define FACE_XP 0x01
 #define FACE_XN 0x02
 #define FACE_YP 0x04
@@ -73,40 +68,11 @@ struct engine {
     EGLContext context;
     int32_t width, height;
     
-    // Шейдеры
     GLuint program;
     GLuint uiProgram;
-    
-    // Текстуры
     GLuint texAtlas;
-    GLuint texAtlasWidth;
-    GLuint texAtlasHeight;
     
-    // Позиция камеры
     float camPos[3];
     float camRot[2];
     float velY;
-    bool onGround;
-    
-    // Управление
-    float moveDirX, moveDirZ;
-    float lastTouchX, lastTouchY;
-    bool isMoving;
-    int movePointerId;
-    int lookPointerId;
-    
-    // Мир (фиксированный)
-    unsigned char blocks[WORLD_SIZE_X][WORLD_SIZE_Y][WORLD_SIZE_Z];
-    unsigned char faces[WORLD_SIZE_X][WORLD_SIZE_Y][WORLD_SIZE_Z];
-    
-    // Рендеринг
-    GLuint vbo;
-    int visibleFaceCount;
-    bool meshDirty;
-    
-    // Редактирование
-    struct block_edit edits[MAX_EDITS];
-    int editCount;
-};
-
-#endif
+    bool
