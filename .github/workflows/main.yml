@@ -1,0 +1,38 @@
+name: Build Geometrium
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: android-actions/setup-android@v3
+    - run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+    - uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25c
+    - name: Get STB
+      run: wget -O stb_image.h https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
+    - name: Build
+      run: |
+        TOOLCHAIN=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin
+        GLUE=$ANDROID_NDK_ROOT/sources/android/native_app_glue
+        FLAGS="-O2 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lGLESv2 -lEGL -lm"
+        $TOOLCHAIN/aarch64-linux-android21-clang main.c $GLUE/android_native_app_glue.c -o libmain_64.so $FLAGS
+        $TOOLCHAIN/armv7a-linux-androideabi21-clang main.c $GLUE/android_native_app_glue.c -o libmain_32.so $FLAGS
+    - name: Package
+      run: |
+        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a staging/assets
+        cp libmain_64.so staging/lib/arm64-v8a/libmain.so
+        cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
+        cp *.png staging/assets/ 2>/dev/null || true
+        BT=$ANDROID_HOME/build-tools/34.0.0
+        $BT/aapt package -f -M AndroidManifest.xml -I $ANDROID_HOME/platforms/android-34/android.jar -F unsigned.apk staging/
+        $BT/zipalign -v 4 unsigned.apk aligned.apk
+        keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
+        $BT/apksigner sign --ks d.keystore --ks-pass pass:android --out Geometrium.apk aligned.apk
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Geometrium
+        path: Geometrium.apk
