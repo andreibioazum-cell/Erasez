@@ -2,10 +2,12 @@
 #define RENDER_H
 
 #include <GLES2/gl2.h>
+#include <stdlib.h>
+#include <string.h>
 #include "engine.h"
 #include "math_utils.h"
 
-// ===== ТЕКСТУРНЫЙ АТЛАС (создаётся программно) =====
+// ===== ТЕКСТУРНЫЙ АТЛАС =====
 static GLuint create_texture_atlas(struct engine* eng) {
     int atlasSize = 128;
     int blockSize = 16;
@@ -14,18 +16,16 @@ static GLuint create_texture_atlas(struct engine* eng) {
     unsigned char* atlas = (unsigned char*)calloc(atlasSize * atlasSize * 4, 1);
     if (!atlas) return 0;
     
-    // Цвета блоков (RGB)
     unsigned char colors[][3] = {
-        {0, 0, 0},           // AIR
-        {100, 200, 80},      // GRASS - зелёный
-        {160, 130, 80},      // DIRT - коричневый
-        {180, 180, 180},     // STONE - серый
-        {180, 140, 80},      // WOOD - тёмный
-        {80, 180, 80},       // LEAVES - зелёный листвы
-        {210, 200, 150},     // SAND - жёлтый
+        {0, 0, 0},
+        {100, 200, 80},
+        {160, 130, 80},
+        {180, 180, 180},
+        {180, 140, 80},
+        {80, 180, 80},
+        {210, 200, 150},
     };
     
-    // Заполняем атлас
     for (int b = 1; b < sizeof(colors)/sizeof(colors[0]); b++) {
         int bx = (b % blocksPerRow) * blockSize;
         int by = (b / blocksPerRow) * blockSize;
@@ -33,22 +33,16 @@ static GLuint create_texture_atlas(struct engine* eng) {
         for (int y = 0; y < blockSize; y++) {
             for (int x = 0; x < blockSize; x++) {
                 int idx = ((by + y) * atlasSize + (bx + x)) * 4;
-                
-                // Добавляем шум для текстуры
                 float noise = (rand() % 20 - 10) / 255.0f;
                 atlas[idx] = colors[b][0] + noise * 30;
                 atlas[idx+1] = colors[b][1] + noise * 30;
                 atlas[idx+2] = colors[b][2] + noise * 30;
                 atlas[idx+3] = 255;
                 
-                // Грани для некоторых блоков
-                if (b == BLOCK_GRASS) {
-                    // Верх травы немного светлее
-                    if (y > blockSize * 0.7f) {
-                        atlas[idx] = 130;
-                        atlas[idx+1] = 220;
-                        atlas[idx+2] = 70;
-                    }
+                if (b == BLOCK_GRASS && y > blockSize * 0.7f) {
+                    atlas[idx] = 130;
+                    atlas[idx+1] = 220;
+                    atlas[idx+2] = 70;
                 }
             }
         }
@@ -70,7 +64,6 @@ static GLuint create_texture_atlas(struct engine* eng) {
 
 // ===== ПОСТРОЕНИЕ МЕША =====
 static void rebuild_mesh(struct engine* eng) {
-    // Сначала обновляем грани
     for (int x = 0; x < WORLD_SIZE_X; x++) {
         for (int y = 0; y < WORLD_SIZE_Y; y++) {
             for (int z = 0; z < WORLD_SIZE_Z; z++) {
@@ -90,7 +83,6 @@ static void rebuild_mesh(struct engine* eng) {
         }
     }
     
-    // Подсчёт видимых граней
     int fc = 0;
     for (int x = 0; x < WORLD_SIZE_X; x++)
         for (int y = 0; y < WORLD_SIZE_Y; y++)
@@ -110,7 +102,6 @@ static void rebuild_mesh(struct engine* eng) {
         return;
     }
     
-    // Строим буфер
     int vertCount = fc * 6;
     float* buf = (float*)malloc(vertCount * 8 * sizeof(float));
     if (!buf) return;
@@ -135,8 +126,8 @@ static void rebuild_mesh(struct engine* eng) {
                 float du = 1.0f / 8.0f;
                 float dv = 1.0f / 8.0f;
                 
-                // Функция добавления квада
-                #define ADD_QUAD(ax,ay,az, bx,by,bz, cx,cy,cz, dx,dy,dz, nx,ny,nz) \
+                // Добавление квада (исправленный макрос)
+                #define ADD_QUAD(ax,ay,az, bx,by,bz, cx,cy,cz, dx,dy,dz, nx,ny,nz) do { \
                     float verts[6][8] = { \
                         {ax,ay,az, u, v, nx,ny,nz}, \
                         {bx,by,bz, u+du, v, nx,ny,nz}, \
@@ -146,12 +137,13 @@ static void rebuild_mesh(struct engine* eng) {
                         {dx,dy,dz, u, v+dv, nx,ny,nz} \
                     }; \
                     memcpy(&buf[idx*8], verts, sizeof(verts)); \
-                    idx += 6;
+                    idx += 6; \
+                } while(0)
                 
                 if (f & FACE_XP) ADD_QUAD(x1,y0,z0, x1,y0,z1, x1,y1,z1, x1,y1,z0, 1,0,0);
                 if (f & FACE_XN) ADD_QUAD(x0,y0,z1, x0,y0,z0, x0,y1,z0, x0,y1,z1, -1,0,0);
                 if (f & FACE_YP) {
-                    float u2 = u + du * 0.5f; // Для травы отдельная текстура
+                    float u2 = u + du * 0.5f;
                     float v2 = v;
                     float verts[6][8] = {
                         {x0,y1,z1, u2, v2, 0,1,0},
@@ -173,7 +165,6 @@ static void rebuild_mesh(struct engine* eng) {
         }
     }
     
-    // Загружаем в VBO
     if (!eng->vbo) glGenBuffers(1, &eng->vbo);
     glBindBuffer(GL_ARRAY_BUFFER, eng->vbo);
     glBufferData(GL_ARRAY_BUFFER, idx * 8 * sizeof(float), buf, GL_STATIC_DRAW);
@@ -190,7 +181,6 @@ static void render_world(struct engine* eng) {
     glEnable(GL_DEPTH_TEST);
     glUseProgram(eng->program);
     
-    // Матрицы
     float proj[16], view[16], mvp[16];
     float aspect = (float)eng->width / (float)eng->height;
     mat4_perspective(proj, GAME_FOV, aspect, 0.1f, 100.0f);
@@ -200,12 +190,10 @@ static void render_world(struct engine* eng) {
     glUniformMatrix4fv(glGetUniformLocation(eng->program, "uMVP"), 1, GL_FALSE, mvp);
     glUniform3fv(glGetUniformLocation(eng->program, "uCamPos"), 1, eng->camPos);
     
-    // Текстура
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, eng->texAtlas);
     glUniform1i(glGetUniformLocation(eng->program, "uTexture"), 0);
     
-    // Рендеринг
     glBindBuffer(GL_ARRAY_BUFFER, eng->vbo);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
