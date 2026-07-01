@@ -31,10 +31,9 @@
 #define PLATFORM_SIZE    50
 #define PLATFORM_Y       0
 #define CHUNK_H          4
+#define WORLD_BUF        (PLATFORM_SIZE)
 
-/* Мир — маленький буфер, одна платформа */
-#define WORLD_BUF (PLATFORM_SIZE)
-
+/* Грани */
 #define FACE_XP 0x01
 #define FACE_XN 0x02
 #define FACE_YP 0x04
@@ -45,10 +44,28 @@
 #define BLOCK_AIR   0
 #define BLOCK_SOLID 1
 
+/* Модели */
+#define MAX_MODELS 64
+
 typedef enum {
     STATE_MENU    = 0,
     STATE_PLAYING = 1
 } GameState;
+
+typedef enum {
+    MODEL_NONE = 0,
+    MODEL_TREE,
+    MODEL_ROCK,
+    MODEL_SNOWMAN,
+    MODEL_HOUSE
+} ModelType;
+
+struct model_instance {
+    ModelType type;
+    float x, y, z;
+    float rotY;
+    float scale;
+};
 
 struct engine {
     struct android_app* app;
@@ -58,12 +75,18 @@ struct engine {
     int32_t width, height;
 
     GLuint program;
-    GLuint texPlatform;
+    GLuint modelProgram;
 
-    /* Кэш uniform */
+    /* Кэш uniform — мир */
     GLint uMVP;
     GLint uCamPos;
     GLint uTex;
+
+    /* Кэш uniform — модели */
+    GLint umMVP;
+    GLint umColor;
+
+    GLuint texSnow;
 
     float camPos[3];
     float camRot[2]; /* [0]=pitch, [1]=yaw */
@@ -85,6 +108,10 @@ struct engine {
 
     unsigned char blocks[WORLD_BUF][CHUNK_H][WORLD_BUF];
     unsigned char faces[WORLD_BUF][CHUNK_H][WORLD_BUF];
+
+    /* Модели на сцене */
+    struct model_instance models[MAX_MODELS];
+    int modelCount;
 
     GameState gameState;
 };
