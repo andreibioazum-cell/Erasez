@@ -37,6 +37,11 @@ static void mat4_translate(float* m, float x, float y, float z) {
     m[12] = x; m[13] = y; m[14] = z;
 }
 
+static void mat4_scale_uniform(float* m, float s) {
+    mat4_identity(m);
+    m[0] = s; m[5] = s; m[10] = s;
+}
+
 static void mat4_mul(float* out, const float* a, const float* b) {
     float res[16];
     for (int c = 0; c < 4; c++)
