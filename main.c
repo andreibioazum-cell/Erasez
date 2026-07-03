@@ -1,13 +1,19 @@
 #include <android_native_app_glue.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <android/log.h>
+#include <stdlib.h>
+#include <time.h>
 
 #include "engine.h"
-#include "world.h"
 #include "math_utils.h"
 #include "physics.h"
 #include "input.h"
 #include "render.h"
+
+#define LOG_TAG "RobloxClone"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 static void engine_draw_frame(struct engine* eng) {
     if (!eng->display) return;
@@ -28,113 +34,60 @@ static void engine_draw_frame(struct engine* eng) {
         return;
     }
 
-    update_world(eng);
     apply_physics(eng);
-
     glClearColor(0.53f, 0.81f, 0.98f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     render_world(eng);
     draw_ui(eng);
-
     eglSwapBuffers(eng->display, eng->surface);
 }
 
 static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* eng = (struct engine*)app->userData;
-
     if (cmd == APP_CMD_INIT_WINDOW) {
         eng->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-        eglInitialize(eng->display, 0, 0);
-        EGLConfig config; EGLint n;
-        EGLint att[] = {
-            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-            EGL_DEPTH_SIZE, 16, EGL_NONE
-        };
-        eglChooseConfig(eng->display, att, &config, 1, &n);
-        eng->surface = eglCreateWindowSurface(eng->display, config,
-                                               eng->app->window, NULL);
+        if (eng->display == EGL_NO_DISPLAY) { LOGE("eglGetDisplay failed"); return; }
+        if (!eglInitialize(eng->display, NULL, NULL)) { LOGE("eglInitialize failed"); return; }
+
+        EGLConfig config;
+        EGLint n;
+        EGLint att[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+                         EGL_DEPTH_SIZE, 16, EGL_NONE };
+        if (!eglChooseConfig(eng->display, att, &config, 1, &n) || n == 0) {
+            LOGE("eglChooseConfig failed"); return;
+        }
+
+        eng->surface = eglCreateWindowSurface(eng->display, config, eng->app->window, NULL);
+        if (eng->surface == EGL_NO_SURFACE) { LOGE("eglCreateWindowSurface failed"); return; }
+
         EGLint ctxAtt[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
         eng->context = eglCreateContext(eng->display, config, NULL, ctxAtt);
-        eglMakeCurrent(eng->display, eng->surface, eng->surface, eng->context);
+        if (eng->context == EGL_NO_CONTEXT) { LOGE("eglCreateContext failed"); return; }
 
-        /* Шейдер мира — одна текстура */
-        const char* vS =
-            "attribute vec3 pos; attribute vec2 uv; attribute vec3 norm;"
-            "varying vec2 vUV; varying vec3 vNorm; varying vec3 vWorldPos;"
-            "uniform mat4 m;"
-            "void main(){"
-            "  gl_Position = m * vec4(pos, 1.0);"
-            "  vUV = uv; vNorm = norm; vWorldPos = pos;"
-            "}";
-        const char* fS =
-            "precision mediump float;"
-            "varying vec2 vUV; varying vec3 vNorm; varying vec3 vWorldPos;"
-            "uniform vec3 camPos; uniform sampler2D tex;"
-            "void main(){"
-            "  vec4 tc = texture2D(tex, vUV);"
-            "  vec3 sun = normalize(vec3(0.35, 0.85, 0.4));"
-            "  float diff = max(dot(vNorm, sun), 0.0);"
-            "  float amb = 0.45;"
-            "  float fb = 0.0;"
-            "  if(vNorm.y > 0.5) fb = 0.1;"
-            "  if(vNorm.y < -0.5) fb = -0.1;"
-            "  float light = clamp(amb + diff * 0.55 + fb, 0.2, 1.0);"
-            "  vec3 lit = tc.rgb * light;"
-            "  float dist = length((vWorldPos - camPos).xz);"
-            "  float fog = clamp((dist - 30.0) / 30.0, 0.0, 0.8);"
-            "  gl_FragColor = vec4(mix(lit, vec3(0.53, 0.81, 0.98), fog), 1.0);"
-            "}";
-
-        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, 1, &vS, NULL); glCompileShader(vs);
-        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, 1, &fS, NULL); glCompileShader(fs);
-
-        eng->program = glCreateProgram();
-        glBindAttribLocation(eng->program, 0, "pos");
-        glBindAttribLocation(eng->program, 1, "uv");
-        glBindAttribLocation(eng->program, 2, "norm");
-        glAttachShader(eng->program, vs);
-        glAttachShader(eng->program, fs);
-        glLinkProgram(eng->program);
-        glDeleteShader(vs); glDeleteShader(fs);
-
-        /* Кэш uniform */
-        eng->uMVP = glGetUniformLocation(eng->program, "m");
-        eng->uCamPos = glGetUniformLocation(eng->program, "camPos");
-        eng->uTex = glGetUniformLocation(eng->program, "tex");
-
-        init_textures(eng);
-        init_ui_shader();
-
-    } else if (cmd == APP_CMD_TERM_WINDOW) {
-        if (eng->display != EGL_NO_DISPLAY) {
-            eglMakeCurrent(eng->display, EGL_NO_SURFACE,
-                           EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            if (eng->context != EGL_NO_CONTEXT)
-                eglDestroyContext(eng->display, eng->context);
-            if (eng->surface != EGL_NO_SURFACE)
-                eglDestroySurface(eng->display, eng->surface);
-            eng->display = EGL_NO_DISPLAY;
-            eng->surface = EGL_NO_SURFACE;
-            eng->context = EGL_NO_CONTEXT;
+        if (!eglMakeCurrent(eng->display, eng->surface, eng->surface, eng->context)) {
+            LOGE("eglMakeCurrent failed"); return;
         }
+
+        init_color_shader(eng);
+        init_ui_shader();
+        init_cube_vbo();
+        init_textures(eng);
+
+        LOGI("Engine initialized successfully");
     }
 }
 
 void android_main(struct android_app* state) {
-    struct engine eng;
-    memset(&eng, 0, sizeof(eng));
-
+    struct engine eng = {0};
     eng.movePointerId = -1;
     eng.lookPointerId = -1;
-    eng.worldLoaded = false;
-    eng.meshDirty = true;
     eng.gameState = STATE_MENU;
-    eng.camPos[0] = (float)(PLATFORM_SIZE / 2);
-    eng.camPos[1] = (float)(PLATFORM_Y) + EYE_H + 1.0f;
-    eng.camPos[2] = -(float)(PLATFORM_SIZE / 2);
+    eng.joyTouched = false;
+    eng.playerPos[0] = 0;
+    eng.playerPos[1] = 0;
+    eng.playerPos[2] = 0;
+    eng.playerRot = 0;
+    eng.camRotY = 0;
 
     state->userData = &eng;
     state->onAppCmd = engine_handle_cmd;
