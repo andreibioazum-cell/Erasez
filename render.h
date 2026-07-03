@@ -5,17 +5,53 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <android/asset_manager.h>
 #include <android/log.h>
 #include "engine.h"
 #include "math_utils.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #define LOG_TAG "Render"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 
 GLuint uiProg = 0;
 
 /* ============= ТЕКСТУРЫ ============= */
-static GLuint make_checker_texture(void) {
+static GLuint load_texture_asset(struct android_app* app, const char* filename) {
+    AAssetManager* mgr = app->activity->assetManager;
+    AAsset* asset = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
+    if (!asset) {
+        LOGE("Failed to open asset: %s", filename);
+        return 0;
+    }
+    size_t len = AAsset_getLength(asset);
+    unsigned char* buf = (unsigned char*)malloc(len);
+    AAsset_read(asset, buf, len);
+    AAsset_close(asset);
+    int w, h, ch;
+    unsigned char* img = stbi_load_from_memory(buf, (int)len, &w, &h, &ch, 4);
+    free(buf);
+    if (!img) {
+        LOGE("stbi_load failed for %s", filename);
+        return 0;
+    }
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    stbi_image_free(img);
+    LOGI("Loaded texture %s (%dx%d)", filename, w, h);
+    return tex;
+}
+
+static GLuint make_fallback_texture(void) {
     int sz = 64;
     unsigned char* px = (unsigned char*)malloc(sz * sz * 4);
     for (int y = 0; y < sz; y++) {
@@ -23,9 +59,9 @@ static GLuint make_checker_texture(void) {
             int i = (y * sz + x) * 4;
             int check = ((x / 8) + (y / 8)) % 2;
             if (check) {
-                px[i] = 90; px[i+1] = 170; px[i+2] = 90; px[i+3] = 255;
+                px[i] = 200; px[i+1] = 210; px[i+2] = 220; px[i+3] = 255;
             } else {
-                px[i] = 70; px[i+1] = 140; px[i+2] = 70; px[i+3] = 255;
+                px[i] = 170; px[i+1] = 180; px[i+2] = 195; px[i+3] = 255;
             }
         }
     }
@@ -42,7 +78,11 @@ static GLuint make_checker_texture(void) {
 }
 
 static void init_textures(struct engine* eng) {
-    eng->texPlatform = make_checker_texture();
+    eng->texPlatform = load_texture_asset(eng->app, "snow.png");
+    if (!eng->texPlatform) {
+        LOGI("snow.png not found, using fallback checker");
+        eng->texPlatform = make_fallback_texture();
+    }
 }
 
 /* ============= ШЕЙДЕРЫ ============= */
@@ -98,6 +138,59 @@ void init_color_shader(struct engine* eng) {
     glDeleteShader(fs);
 }
 
+void init_tex_shader(struct engine* eng) {
+    const char* vS =
+        "attribute vec3 aPos;"
+        "attribute vec3 aNorm;"
+        "attribute vec2 aUV;"
+        "varying vec3 vNorm;"
+        "varying vec3 vWorldPos;"
+        "varying vec2 vUV;"
+        "uniform mat4 uMVP;"
+        "uniform mat4 uModel;"
+        "void main(){"
+        "  gl_Position = uMVP * vec4(aPos, 1.0);"
+        "  vNorm = mat3(uModel) * aNorm;"
+        "  vWorldPos = (uModel * vec4(aPos, 1.0)).xyz;"
+        "  vUV = aUV;"
+        "}";
+    const char* fS =
+        "precision mediump float;"
+        "varying vec3 vNorm;"
+        "varying vec3 vWorldPos;"
+        "varying vec2 vUV;"
+        "uniform vec3 uCamPos;"
+        "uniform sampler2D uTex;"
+        "void main(){"
+        "  vec3 n = normalize(vNorm);"
+        "  vec3 sun = normalize(vec3(0.4, 0.8, 0.3));"
+        "  float diff = max(dot(n, sun), 0.0);"
+        "  float amb = 0.5;"
+        "  float light = clamp(amb + diff * 0.5, 0.25, 1.0);"
+        "  vec4 tc = texture2D(uTex, vUV);"
+        "  vec3 lit = tc.rgb * light;"
+        "  float dist = length((vWorldPos - uCamPos).xz);"
+        "  float fog = clamp((dist - 30.0) / 35.0, 0.0, 0.85);"
+        "  gl_FragColor = vec4(mix(lit, vec3(0.53, 0.81, 0.98), fog), 1.0);"
+        "}";
+
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vS, NULL);
+    glCompileShader(vs);
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &fS, NULL);
+    glCompileShader(fs);
+    eng->texProgram = glCreateProgram();
+    glAttachShader(eng->texProgram, vs);
+    glAttachShader(eng->texProgram, fs);
+    glBindAttribLocation(eng->texProgram, 0, "aPos");
+    glBindAttribLocation(eng->texProgram, 1, "aNorm");
+    glBindAttribLocation(eng->texProgram, 2, "aUV");
+    glLinkProgram(eng->texProgram);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+}
+
 void init_ui_shader(void) {
     const char* vS =
         "attribute vec2 aPos;"
@@ -120,7 +213,7 @@ void init_ui_shader(void) {
     glDeleteShader(fs);
 }
 
-/* ============= КУБ ============= */
+/* ============= КУБ (цветной) ============= */
 static const float cube_data[] = {
      0.5f,-0.5f,-0.5f, 1,0,0,  0.5f,-0.5f, 0.5f, 1,0,0,  0.5f, 0.5f, 0.5f, 1,0,0,
      0.5f,-0.5f,-0.5f, 1,0,0,  0.5f, 0.5f, 0.5f, 1,0,0,  0.5f, 0.5f,-0.5f, 1,0,0,
@@ -180,6 +273,54 @@ static void draw_cube(struct engine* eng, float* vpMat,
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+/* ============= ПЛАТФОРМА С ТЕКСТУРОЙ ============= */
+static GLuint platVBO = 0;
+
+void init_platform_vbo(void) {
+    float hs = PLATFORM_SIZE * 0.5f;
+    float tileUV = PLATFORM_SIZE / 4.0f;
+    /* pos(3) + norm(3) + uv(2) = 8 floats per vertex, 6 vertices */
+    float data[] = {
+        -hs, 0, -hs,  0,1,0,  0,       0,
+         hs, 0, -hs,  0,1,0,  tileUV,  0,
+         hs, 0,  hs,  0,1,0,  tileUV,  tileUV,
+        -hs, 0, -hs,  0,1,0,  0,       0,
+         hs, 0,  hs,  0,1,0,  tileUV,  tileUV,
+        -hs, 0,  hs,  0,1,0,  0,       tileUV,
+    };
+    glGenBuffers(1, &platVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, platVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+static void draw_textured_platform(struct engine* eng, float* vpMat,
+                                    float eyeX, float eyeY, float eyeZ) {
+    float T[16], model[16], mvp[16];
+    mat4_translate(T, 0, 0, 0);
+    memcpy(model, T, 64);
+    mat4_mul(mvp, vpMat, model);
+
+    glUseProgram(eng->texProgram);
+    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram, "uMVP"), 1, GL_FALSE, mvp);
+    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram, "uModel"), 1, GL_FALSE, model);
+    glUniform3f(glGetUniformLocation(eng->texProgram, "uCamPos"), eyeX, eyeY, eyeZ);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, eng->texPlatform);
+    glUniform1i(glGetUniformLocation(eng->texProgram, "uTex"), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, platVBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 32, (void*)12);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, (void*)24);
+    glEnableVertexAttribArray(2);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 /* ============= ПЕРСОНАЖ ============= */
 static void render_character(struct engine* eng, float* vpMat,
                               float eyeX, float eyeY, float eyeZ) {
@@ -191,115 +332,55 @@ static void render_character(struct engine* eng, float* vpMat,
     float armA = eng->animArmAngle;
 
     /* Тело */
-    draw_cube(eng, vpMat,
-              px, py + 0.9f, pz,
-              0.5f, 0.6f, 0.25f,
-              rot, 0, 0,
-              0.2f, 0.6f, 0.85f,
-              eyeX, eyeY, eyeZ);
+    draw_cube(eng, vpMat, px, py+0.9f, pz,
+              0.5f, 0.6f, 0.25f, rot, 0, 0,
+              0.2f, 0.6f, 0.85f, eyeX, eyeY, eyeZ);
 
     /* Голова */
-    draw_cube(eng, vpMat,
-              px, py + 1.45f, pz,
-              0.4f, 0.4f, 0.4f,
-              rot, 0, 0,
-              1.0f, 0.85f, 0.65f,
-              eyeX, eyeY, eyeZ);
+    draw_cube(eng, vpMat, px, py+1.45f, pz,
+              0.4f, 0.4f, 0.4f, rot, 0, 0,
+              1.0f, 0.85f, 0.65f, eyeX, eyeY, eyeZ);
 
     /* Левая рука */
-    float laOX = -cosf(rot) * 0.38f;
-    float laOZ = -sinf(rot) * 0.38f;
-    draw_cube(eng, vpMat,
-              px + laOX, py + 0.85f, pz + laOZ,
-              0.15f, 0.55f, 0.15f,
-              rot, armA, 0,
-              0.2f, 0.6f, 0.85f,
-              eyeX, eyeY, eyeZ);
+    float laOX = -cosf(rot)*0.38f, laOZ = -sinf(rot)*0.38f;
+    draw_cube(eng, vpMat, px+laOX, py+0.85f, pz+laOZ,
+              0.15f, 0.55f, 0.15f, rot, armA, 0,
+              0.2f, 0.6f, 0.85f, eyeX, eyeY, eyeZ);
 
     /* Правая рука */
-    float raOX = cosf(rot) * 0.38f;
-    float raOZ = sinf(rot) * 0.38f;
-    draw_cube(eng, vpMat,
-              px + raOX, py + 0.85f, pz + raOZ,
-              0.15f, 0.55f, 0.15f,
-              rot, -armA, 0,
-              0.2f, 0.6f, 0.85f,
-              eyeX, eyeY, eyeZ);
+    float raOX = cosf(rot)*0.38f, raOZ = sinf(rot)*0.38f;
+    draw_cube(eng, vpMat, px+raOX, py+0.85f, pz+raOZ,
+              0.15f, 0.55f, 0.15f, rot, -armA, 0,
+              0.2f, 0.6f, 0.85f, eyeX, eyeY, eyeZ);
 
     /* Левая нога */
-    float llOX = -cosf(rot) * 0.13f;
-    float llOZ = -sinf(rot) * 0.13f;
-    draw_cube(eng, vpMat,
-              px + llOX, py + 0.3f, pz + llOZ,
-              0.18f, 0.55f, 0.18f,
-              rot, legA, 0,
-              0.15f, 0.35f, 0.15f,
-              eyeX, eyeY, eyeZ);
+    float llOX = -cosf(rot)*0.13f, llOZ = -sinf(rot)*0.13f;
+    draw_cube(eng, vpMat, px+llOX, py+0.3f, pz+llOZ,
+              0.18f, 0.55f, 0.18f, rot, legA, 0,
+              0.15f, 0.35f, 0.15f, eyeX, eyeY, eyeZ);
 
     /* Правая нога */
-    float rlOX = cosf(rot) * 0.13f;
-    float rlOZ = sinf(rot) * 0.13f;
-    draw_cube(eng, vpMat,
-              px + rlOX, py + 0.3f, pz + rlOZ,
-              0.18f, 0.55f, 0.18f,
-              rot, -legA, 0,
-              0.15f, 0.35f, 0.15f,
-              eyeX, eyeY, eyeZ);
+    float rlOX = cosf(rot)*0.13f, rlOZ = sinf(rot)*0.13f;
+    draw_cube(eng, vpMat, px+rlOX, py+0.3f, pz+rlOZ,
+              0.18f, 0.55f, 0.18f, rot, -legA, 0,
+              0.15f, 0.35f, 0.15f, eyeX, eyeY, eyeZ);
 }
 
-/* ============= ПЛАТФОРМА ============= */
-static void render_platform(struct engine* eng, float* vpMat,
-                             float eyeX, float eyeY, float eyeZ) {
-    /* Основная платформа */
-    draw_cube(eng, vpMat,
-              0, -0.5f, 0,
-              PLATFORM_SIZE, 1.0f, PLATFORM_SIZE,
-              0, 0, 0,
-              0.35f, 0.75f, 0.35f,
-              eyeX, eyeY, eyeZ);
-
-    /* Декоративные кубики */
-    draw_cube(eng, vpMat,
-              10, 0.5f, 10,
-              1.0f, 1.0f, 1.0f,
-              0, 0, 0,
-              0.85f, 0.2f, 0.2f,
-              eyeX, eyeY, eyeZ);
-
-    draw_cube(eng, vpMat,
-              -8, 0.5f, 5,
-              1.0f, 1.0f, 1.0f,
-              0.5f, 0, 0,
-              0.2f, 0.2f, 0.85f,
-              eyeX, eyeY, eyeZ);
-
-    draw_cube(eng, vpMat,
-              5, 0.5f, -12,
-              1.0f, 1.0f, 1.0f,
-              0.8f, 0, 0,
-              0.85f, 0.85f, 0.2f,
-              eyeX, eyeY, eyeZ);
-
-    draw_cube(eng, vpMat,
-              -15, 1.0f, -8,
-              2.0f, 2.0f, 2.0f,
-              0.3f, 0, 0,
-              0.85f, 0.5f, 0.2f,
-              eyeX, eyeY, eyeZ);
-
-    draw_cube(eng, vpMat,
-              12, 0.75f, -5,
-              1.5f, 1.5f, 1.5f,
-              1.0f, 0, 0,
-              0.6f, 0.2f, 0.7f,
-              eyeX, eyeY, eyeZ);
-
-    draw_cube(eng, vpMat,
-              -5, 0.5f, 15,
-              1.0f, 1.0f, 1.0f,
-              0, 0, 0,
-              0.2f, 0.7f, 0.7f,
-              eyeX, eyeY, eyeZ);
+/* ============= ДЕКОР ============= */
+static void render_decorations(struct engine* eng, float* vpMat,
+                                float eyeX, float eyeY, float eyeZ) {
+    draw_cube(eng, vpMat, 10,0.5f,10, 1,1,1, 0,0,0,
+              0.85f,0.2f,0.2f, eyeX,eyeY,eyeZ);
+    draw_cube(eng, vpMat, -8,0.5f,5, 1,1,1, 0.5f,0,0,
+              0.2f,0.2f,0.85f, eyeX,eyeY,eyeZ);
+    draw_cube(eng, vpMat, 5,0.5f,-12, 1,1,1, 0.8f,0,0,
+              0.85f,0.85f,0.2f, eyeX,eyeY,eyeZ);
+    draw_cube(eng, vpMat, -15,1.0f,-8, 2,2,2, 0.3f,0,0,
+              0.85f,0.5f,0.2f, eyeX,eyeY,eyeZ);
+    draw_cube(eng, vpMat, 12,0.75f,-5, 1.5f,1.5f,1.5f, 1.0f,0,0,
+              0.6f,0.2f,0.7f, eyeX,eyeY,eyeZ);
+    draw_cube(eng, vpMat, -5,0.5f,15, 1,1,1, 0,0,0,
+              0.2f,0.7f,0.7f, eyeX,eyeY,eyeZ);
 }
 
 /* ============= РЕНДЕР СЦЕНЫ ============= */
@@ -315,11 +396,12 @@ void render_world(struct engine* eng) {
     float tgtZ = eng->playerPos[2];
 
     float proj[16], view[16], vp[16];
-    mat4_perspective(proj, GAME_FOV, (float)eng->width / (float)eng->height, 0.1f, 200.0f);
+    mat4_perspective(proj, GAME_FOV, (float)eng->width/(float)eng->height, 0.1f, 200.0f);
     mat4_lookat_pos(view, eyeX, eyeY, eyeZ, tgtX, tgtY, tgtZ);
     mat4_mul(vp, proj, view);
 
-    render_platform(eng, vp, eyeX, eyeY, eyeZ);
+    draw_textured_platform(eng, vp, eyeX, eyeY, eyeZ);
+    render_decorations(eng, vp, eyeX, eyeY, eyeZ);
     render_character(eng, vp, eyeX, eyeY, eyeZ);
 }
 
@@ -347,7 +429,7 @@ static void draw_ring_ui(float cx, float cy, float r, float thick,
     for(int i=0;i<=segs;i++){
         float a = (float)i/segs*2*PI;
         float c = cosf(a), s = sinf(a);
-        verts[i*4] = ndcX + c*rxo;
+        verts[i*4]   = ndcX + c*rxo;
         verts[i*4+1] = ndcY + s*ryo;
         verts[i*4+2] = ndcX + c*rxi;
         verts[i*4+3] = ndcY + s*ryi;
@@ -368,7 +450,7 @@ static void draw_circle_ui(float cx, float cy, float r, int w, int h,
     verts[0] = ndcX; verts[1] = ndcY;
     for(int i=0;i<=segs;i++){
         float a = (float)i/segs*2*PI;
-        verts[(i+1)*2] = ndcX + cosf(a)*rx;
+        verts[(i+1)*2]   = ndcX + cosf(a)*rx;
         verts[(i+1)*2+1] = ndcY + sinf(a)*ry;
     }
     glUseProgram(uiProg);
@@ -396,7 +478,7 @@ void draw_menu(struct engine* eng) {
     draw_rect_ui(sw/2.0f, titleY, 140, 35, sw, sh, 0.3f,0.5f,0.9f, 0.9f);
     draw_border_ui(sw/2.0f, titleY, 140, 35, 3, sw, sh, 0.5f,0.7f,1.0f, 1);
 
-    float playX = sw / 2.0f, playY = sh * 0.55f;
+    float playX = sw/2.0f, playY = sh * 0.55f;
     draw_rect_ui(playX, playY, 100, 40, sw, sh, 0.2f,0.65f,0.2f, 0.9f);
     draw_border_ui(playX, playY, 100, 40, 3, sw, sh, 0.4f,1.0f,0.4f, 1);
 
