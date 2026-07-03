@@ -45,8 +45,8 @@ struct engine {
     EGLContext context;
     int32_t width, height;
 
-    GLuint program;
     GLuint colorProgram;
+    GLuint texProgram;
     GLuint texPlatform;
 
     float playerPos[3];
