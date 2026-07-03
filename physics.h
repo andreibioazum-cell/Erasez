@@ -1,88 +1,76 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
-#include <stdbool.h>
 #include <math.h>
 #include "engine.h"
 
-static bool is_solid(struct engine* eng, float rx, float ry, float rz) {
-    /* Рендер → буфер координаты */
-    int bx = (int)floorf(rx + 0.5f);
-    int by = (int)floorf(ry + 0.5f);
-    int bz = (int)floorf(-rz + 0.5f);
-    if (bx < 0 || bx >= WORLD_BUF) return false;
-    if (bz < 0 || bz >= WORLD_BUF) return false;
-    if (by < 0 || by >= CHUNK_H) return false;
-    return eng->blocks[bx][by][bz] > 0;
-}
-
-static bool check_box(struct engine* eng, float x, float y, float z) {
-    return is_solid(eng, x - PLAYER_W, y, z - PLAYER_W) ||
-           is_solid(eng, x + PLAYER_W, y, z - PLAYER_W) ||
-           is_solid(eng, x - PLAYER_W, y, z + PLAYER_W) ||
-           is_solid(eng, x + PLAYER_W, y, z + PLAYER_W);
-}
-
-static bool check_ground(struct engine* eng, float x, float footY, float z) {
-    return check_box(eng, x, footY - 0.05f, z);
-}
-
-static bool check_ceiling(struct engine* eng, float x, float headY, float z) {
-    return check_box(eng, x, headY, z);
-}
-
-static bool check_wall(struct engine* eng, float x, float eyeY, float z) {
-    float foot = eyeY - EYE_H;
-    return check_box(eng, x, foot + 0.1f, z) ||
-           check_box(eng, x, foot + EYE_H * 0.4f, z) ||
-           check_box(eng, x, foot + EYE_H * 0.8f, z) ||
-           check_box(eng, x, foot + EYE_H, z);
-}
-
 static void apply_physics(struct engine* eng) {
+    /* Гравитация */
     eng->velY -= GRAVITY;
     if (eng->velY < TERM_VEL) eng->velY = TERM_VEL;
 
-    float nextY = eng->camPos[1] + eng->velY;
+    float nextY = eng->playerPos[1] + eng->velY;
+
+    /* Проверка земли — плоская платформа на Y=0 */
     eng->onGround = false;
-
-    if (check_ground(eng, eng->camPos[0], eng->camPos[1] - EYE_H, eng->camPos[2]))
+    if (nextY <= PLATFORM_Y && eng->velY <= 0) {
+        nextY = PLATFORM_Y;
+        eng->velY = 0;
         eng->onGround = true;
-
-    if (eng->velY <= 0) {
-        if (check_ground(eng, eng->camPos[0], nextY - EYE_H, eng->camPos[2])) {
-            eng->velY = 0;
-            eng->onGround = true;
-        } else {
-            eng->camPos[1] = nextY;
-        }
-    } else {
-        if (check_ceiling(eng, eng->camPos[0], nextY + HEAD_MARGIN, eng->camPos[2]))
-            eng->velY = 0;
-        else
-            eng->camPos[1] = nextY;
     }
 
-    /* Движение по горизонтали */
+    eng->playerPos[1] = nextY;
+
+    if (eng->playerPos[1] <= PLATFORM_Y) {
+        eng->playerPos[1] = PLATFORM_Y;
+        eng->onGround = true;
+    }
+
+    /* Движение */
     if (eng->isMoving && (eng->moveDirX != 0 || eng->moveDirZ != 0)) {
         float speed = 0.08f;
-        float yaw = eng->camRot[1];
-        float fX = sinf(yaw), fZ = -cosf(yaw);
-        float rX = cosf(yaw), rZ = sinf(yaw);
+        float camY = eng->camRotY;
+        float fX = sinf(camY), fZ = -cosf(camY);
+        float rX = cosf(camY), rZ = sinf(camY);
         float dx = (fX * -eng->moveDirZ + rX * eng->moveDirX) * speed;
         float dz = (fZ * -eng->moveDirZ + rZ * eng->moveDirX) * speed;
 
-        if (!check_wall(eng, eng->camPos[0] + dx, eng->camPos[1], eng->camPos[2]))
-            eng->camPos[0] += dx;
-        if (!check_wall(eng, eng->camPos[0], eng->camPos[1], eng->camPos[2] + dz))
-            eng->camPos[2] += dz;
+        eng->playerPos[0] += dx;
+        eng->playerPos[2] += dz;
+
+        /* Поворот персонажа в направлении движения */
+        float moveAngle = atan2f(dx, -dz);
+        float diff = moveAngle - eng->playerRot;
+        while (diff > PI) diff -= 2 * PI;
+        while (diff < -PI) diff += 2 * PI;
+        eng->playerRot += diff * 0.2f;
+
+        /* Анимация ходьбы */
+        eng->animTime += ANIM_SPEED;
+        eng->animLegAngle = sinf(eng->animTime) * 0.6f;
+        eng->animArmAngle = -sinf(eng->animTime) * 0.5f;
+    } else {
+        /* Плавное затухание анимации */
+        eng->animLegAngle *= 0.85f;
+        eng->animArmAngle *= 0.85f;
+        if (fabsf(eng->animLegAngle) < 0.01f) {
+            eng->animLegAngle = 0;
+            eng->animArmAngle = 0;
+        }
     }
 
-    /* Упал — респавн */
-    if (eng->camPos[1] < -20.0f) {
-        eng->camPos[0] = (float)(PLATFORM_SIZE / 2);
-        eng->camPos[1] = (float)(PLATFORM_Y) + EYE_H + 1.0f;
-        eng->camPos[2] = -(float)(PLATFORM_SIZE / 2);
+    /* Ограничение платформой */
+    float half = PLATFORM_SIZE * 0.5f - 0.5f;
+    if (eng->playerPos[0] > half) eng->playerPos[0] = half;
+    if (eng->playerPos[0] < -half) eng->playerPos[0] = -half;
+    if (eng->playerPos[2] > half) eng->playerPos[2] = half;
+    if (eng->playerPos[2] < -half) eng->playerPos[2] = -half;
+
+    /* Упал за карту */
+    if (eng->playerPos[1] < -20.0f) {
+        eng->playerPos[0] = 0;
+        eng->playerPos[1] = 3.0f;
+        eng->playerPos[2] = 0;
         eng->velY = 0;
     }
 }
