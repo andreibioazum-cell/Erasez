@@ -60,6 +60,7 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
         init_cube_vbo();
         init_platform_vbo();
         init_textures(eng);
+        init_world_blocks(eng);
         LOGI("Engine initialized");
     }
 }
