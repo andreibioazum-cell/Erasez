@@ -189,7 +189,6 @@ static RBoxMesh generate_rounded_box(float r) {
     float hs = 0.5f;
     float ir = hs - r;
 
-    /* 6 граней */
     rbox_quad(&m, -ir,hs,-ir, 0,1,0,  ir,hs,-ir, 0,1,0,  ir,hs,ir, 0,1,0,  -ir,hs,ir, 0,1,0);
     rbox_quad(&m, -ir,-hs,ir, 0,-1,0, ir,-hs,ir, 0,-1,0, ir,-hs,-ir, 0,-1,0, -ir,-hs,-ir, 0,-1,0);
     rbox_quad(&m, hs,-ir,-ir, 1,0,0,  hs,-ir,ir, 1,0,0,  hs,ir,ir, 1,0,0,  hs,ir,-ir, 1,0,0);
@@ -197,7 +196,6 @@ static RBoxMesh generate_rounded_box(float r) {
     rbox_quad(&m, -ir,-ir,hs, 0,0,1,  ir,-ir,hs, 0,0,1,  ir,ir,hs, 0,0,1,  -ir,ir,hs, 0,0,1);
     rbox_quad(&m, ir,-ir,-hs, 0,0,-1, -ir,-ir,-hs, 0,0,-1, -ir,ir,-hs, 0,0,-1, ir,ir,-hs, 0,0,-1);
 
-    /* 12 рёбер */
     for (int i = 0; i < seg; i++) {
         float a0 = (float)i/seg*(PI*0.5f), a1 = (float)(i+1)/seg*(PI*0.5f);
         float c0=cosf(a0),s0=sinf(a0),c1=cosf(a1),s1=sinf(a1);
@@ -230,7 +228,6 @@ static RBoxMesh generate_rounded_box(float r) {
                       -ir-r*s1,ir,-ir-r*c1, -s1,0,-c1, -ir-r*s1,-ir,-ir-r*c1, -s1,0,-c1);
     }
 
-    /* 8 углов */
     float signs[8][3] = {
         {1,1,1},{-1,1,1},{1,-1,1},{-1,-1,1},
         {1,1,-1},{-1,1,-1},{1,-1,-1},{-1,-1,-1}
@@ -312,27 +309,25 @@ static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-/* ============= R6 ПЕРСОНАЖ (маленький) ============= */
-/* Масштаб ~0.6 от обычного */
-#define R6_SCALE     0.6f
+/* ============= R6 ПЕРСОНАЖ ============= */
+#define R6_SCALE     0.55f
 
-#define R6_HEAD_W    (0.50f * R6_SCALE)
-#define R6_HEAD_H    (0.50f * R6_SCALE)
-#define R6_HEAD_D    (0.50f * R6_SCALE)
+#define R6_HEAD_W    (0.60f * R6_SCALE)
+#define R6_HEAD_H    (0.60f * R6_SCALE)
+#define R6_HEAD_D    (0.60f * R6_SCALE)
 
-#define R6_TORSO_W   (0.80f * R6_SCALE)
-#define R6_TORSO_H   (0.80f * R6_SCALE)
-#define R6_TORSO_D   (0.40f * R6_SCALE)
+#define R6_TORSO_W   (1.00f * R6_SCALE)
+#define R6_TORSO_H   (1.20f * R6_SCALE)
+#define R6_TORSO_D   (0.50f * R6_SCALE)
 
-#define R6_ARM_W     (0.30f * R6_SCALE)
-#define R6_ARM_H     (0.80f * R6_SCALE)
-#define R6_ARM_D     (0.30f * R6_SCALE)
+#define R6_ARM_W     (0.50f * R6_SCALE)
+#define R6_ARM_H     (1.20f * R6_SCALE)
+#define R6_ARM_D     (0.50f * R6_SCALE)
 
-#define R6_LEG_W     (0.35f * R6_SCALE)
-#define R6_LEG_H     (0.80f * R6_SCALE)
-#define R6_LEG_D     (0.35f * R6_SCALE)
+#define R6_LEG_W     (0.50f * R6_SCALE)
+#define R6_LEG_H     (1.20f * R6_SCALE)
+#define R6_LEG_D     (0.50f * R6_SCALE)
 
-/* Цвета */
 #define COL_HEAD_R  0.96f
 #define COL_HEAD_G  0.80f
 #define COL_HEAD_B  0.19f
@@ -366,8 +361,7 @@ static void render_character(struct engine* eng, float* vpMat,
         armSwing = -0.3f;
     }
 
-    /* Корень — центр торса */
-    /* Высота: ноги + пол торса */
+    /* Центр торса на высоте: LEG_H + TORSO_H/2 */
     float rootY = py + R6_LEG_H + R6_TORSO_H * 0.5f;
 
     float rootMat[16];
@@ -378,55 +372,77 @@ static void render_character(struct engine* eng, float* vpMat,
         mat4_mul(rootMat, T, R);
     }
 
-    /* Торс */
+    /* ТОРС */
     float torsoMat[16];
-    draw_part(eng, vpMat, rootMat, 0,0,0,
+    draw_part(eng, vpMat, rootMat, 0, 0, 0,
               R6_TORSO_W, R6_TORSO_H, R6_TORSO_D, 0,0,0,
               COL_TORSO_R, COL_TORSO_G, COL_TORSO_B,
               eyeX, eyeY, eyeZ, torsoMat);
 
-    /* Голова */
+    /* ГОЛОВА */
     draw_part(eng, vpMat, torsoMat,
               0, R6_TORSO_H*0.5f + R6_HEAD_H*0.5f, 0,
               R6_HEAD_W, R6_HEAD_H, R6_HEAD_D, 0,0,0,
               COL_HEAD_R, COL_HEAD_G, COL_HEAD_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* Левая рука — pivot на плече, рука свисает вниз */
-    float armPivotY = R6_TORSO_H * 0.5f - R6_ARM_W * 0.3f;
+    /* РУКИ — pivot на плече, рука свисает вниз */
+    float armPivotY = R6_TORSO_H * 0.5f;
     float armOffX = R6_TORSO_W * 0.5f + R6_ARM_W * 0.5f;
 
-    float laMat[16];
+    /* Левая рука */
+    float laPivot[16];
     draw_part(eng, vpMat, torsoMat,
               -armOffX, armPivotY, 0,
-              R6_ARM_W, R6_ARM_H, R6_ARM_D,
+              0.001f, 0.001f, 0.001f,
               -armSwing, 0, 0,
+              0,0,0, eyeX,eyeY,eyeZ, laPivot);
+    draw_part(eng, vpMat, laPivot,
+              0, -R6_ARM_H * 0.5f, 0,
+              R6_ARM_W, R6_ARM_H, R6_ARM_D, 0,0,0,
               COL_ARM_R, COL_ARM_G, COL_ARM_B,
               eyeX, eyeY, eyeZ, NULL);
 
     /* Правая рука */
+    float raPivot[16];
     draw_part(eng, vpMat, torsoMat,
               armOffX, armPivotY, 0,
-              R6_ARM_W, R6_ARM_H, R6_ARM_D,
+              0.001f, 0.001f, 0.001f,
               armSwing, 0, 0,
+              0,0,0, eyeX,eyeY,eyeZ, raPivot);
+    draw_part(eng, vpMat, raPivot,
+              0, -R6_ARM_H * 0.5f, 0,
+              R6_ARM_W, R6_ARM_H, R6_ARM_D, 0,0,0,
               COL_ARM_R, COL_ARM_G, COL_ARM_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* Левая нога — pivot на бедре */
+    /* НОГИ — pivot на бедре (низ торса) */
+    float legPivotY = -R6_TORSO_H * 0.5f;
     float legOffX = R6_TORSO_W * 0.25f;
 
+    /* Левая нога */
+    float llPivot[16];
     draw_part(eng, vpMat, torsoMat,
-              -legOffX, -(R6_TORSO_H*0.5f), 0,
-              R6_LEG_W, R6_LEG_H, R6_LEG_D,
+              -legOffX, legPivotY, 0,
+              0.001f, 0.001f, 0.001f,
               legSwing, 0, 0,
+              0,0,0, eyeX,eyeY,eyeZ, llPivot);
+    draw_part(eng, vpMat, llPivot,
+              0, -R6_LEG_H * 0.5f, 0,
+              R6_LEG_W, R6_LEG_H, R6_LEG_D, 0,0,0,
               COL_LEG_R, COL_LEG_G, COL_LEG_B,
               eyeX, eyeY, eyeZ, NULL);
 
     /* Правая нога */
+    float rlPivot[16];
     draw_part(eng, vpMat, torsoMat,
-              legOffX, -(R6_TORSO_H*0.5f), 0,
-              R6_LEG_W, R6_LEG_H, R6_LEG_D,
+              legOffX, legPivotY, 0,
+              0.001f, 0.001f, 0.001f,
               -legSwing, 0, 0,
+              0,0,0, eyeX,eyeY,eyeZ, rlPivot);
+    draw_part(eng, vpMat, rlPivot,
+              0, -R6_LEG_H * 0.5f, 0,
+              R6_LEG_W, R6_LEG_H, R6_LEG_D, 0,0,0,
               COL_LEG_R, COL_LEG_G, COL_LEG_B,
               eyeX, eyeY, eyeZ, NULL);
 }
