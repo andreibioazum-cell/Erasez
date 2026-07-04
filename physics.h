@@ -29,17 +29,14 @@ static void apply_physics(struct engine* eng) {
         eng->playerPos[0] += dx;
         eng->playerPos[2] += dz;
 
-        /* Мгновенный поворот */
-        eng->playerRot = atan2f(dx, -dz);
+        /* Мгновенный поворот — направление куда идём */
+        eng->playerRot = atan2f(dx, dz);
 
-        /* Анимация ходьбы */
         eng->animTime += 0.15f;
     } else if (eng->onGround) {
-        /* Idle — медленное покачивание */
         eng->animTime += 0.03f;
     }
 
-    /* Ограничение платформой */
     float half = PLATFORM_SIZE * 0.5f - 0.5f;
     if (eng->playerPos[0] > half) eng->playerPos[0] = half;
     if (eng->playerPos[0] < -half) eng->playerPos[0] = -half;
