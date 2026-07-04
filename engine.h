@@ -31,6 +31,14 @@
 #define STATE_MENU      0
 #define STATE_PLAYING   1
 
+/* Коллизия — все декоративные блоки */
+#define MAX_BLOCKS      32
+
+struct BlockCollider {
+    float x, y, z;      /* центр блока */
+    float sx, sy, sz;   /* размеры (полные) */
+};
+
 struct engine {
     struct android_app* app;
     EGLDisplay display;
@@ -58,7 +66,15 @@ struct engine {
     float camRotY;
     float animTime;
 
+    /* Плавное затухание анимации */
+    float animArmSwing;
+    float animLegSwing;
+
     int gameState;
+
+    /* Мировые блоки для коллизии */
+    struct BlockCollider blocks[MAX_BLOCKS];
+    int blockCount;
 };
 
 #endif
