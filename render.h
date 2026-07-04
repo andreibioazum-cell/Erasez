@@ -324,8 +324,9 @@ static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
 #define R6_ARM_H     (1.20f * R6_SCALE)
 #define R6_ARM_D     (0.50f * R6_SCALE)
 
+/* Ноги -5% */
 #define R6_LEG_W     (0.50f * R6_SCALE)
-#define R6_LEG_H     (1.20f * R6_SCALE)
+#define R6_LEG_H     (1.14f * R6_SCALE)
 #define R6_LEG_D     (0.50f * R6_SCALE)
 
 #define COL_HEAD_R  0.96f
@@ -349,19 +350,20 @@ static void render_character(struct engine* eng, float* vpMat,
     float rot = eng->playerRot;
     float t = eng->animTime;
 
-    bool walking = eng->isMoving && (eng->moveDirX != 0 || eng->moveDirZ != 0);
     bool inAir = !eng->onGround;
 
-    float legSwing = 0, armSwing = 0;
-    if (walking) {
-        legSwing = sinf(t) * 0.6f;
-        armSwing = sinf(t) * 0.5f;
-    } else if (inAir) {
+    /* Плавная амплитуда из engine */
+    float armAmp = eng->animArmSwing;
+    float legAmp = eng->animLegSwing;
+
+    float legSwing = sinf(t) * legAmp;
+    float armSwing = sinf(t) * armAmp;
+
+    if (inAir) {
         legSwing = -0.2f;
         armSwing = -0.3f;
     }
 
-    /* Центр торса на высоте: LEG_H + TORSO_H/2 */
     float rootY = py + R6_LEG_H + R6_TORSO_H * 0.5f;
 
     float rootMat[16];
@@ -386,11 +388,10 @@ static void render_character(struct engine* eng, float* vpMat,
               COL_HEAD_R, COL_HEAD_G, COL_HEAD_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* РУКИ — pivot на плече, рука свисает вниз */
+    /* РУКИ */
     float armPivotY = R6_TORSO_H * 0.5f;
     float armOffX = R6_TORSO_W * 0.5f + R6_ARM_W * 0.5f;
 
-    /* Левая рука */
     float laPivot[16];
     draw_part(eng, vpMat, torsoMat,
               -armOffX, armPivotY, 0,
@@ -403,7 +404,6 @@ static void render_character(struct engine* eng, float* vpMat,
               COL_ARM_R, COL_ARM_G, COL_ARM_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* Правая рука */
     float raPivot[16];
     draw_part(eng, vpMat, torsoMat,
               armOffX, armPivotY, 0,
@@ -416,11 +416,10 @@ static void render_character(struct engine* eng, float* vpMat,
               COL_ARM_R, COL_ARM_G, COL_ARM_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* НОГИ — pivot на бедре (низ торса) */
+    /* НОГИ */
     float legPivotY = -R6_TORSO_H * 0.5f;
     float legOffX = R6_TORSO_W * 0.25f;
 
-    /* Левая нога */
     float llPivot[16];
     draw_part(eng, vpMat, torsoMat,
               -legOffX, legPivotY, 0,
@@ -433,7 +432,6 @@ static void render_character(struct engine* eng, float* vpMat,
               COL_LEG_R, COL_LEG_G, COL_LEG_B,
               eyeX, eyeY, eyeZ, NULL);
 
-    /* Правая нога */
     float rlPivot[16];
     draw_part(eng, vpMat, torsoMat,
               legOffX, legPivotY, 0,
@@ -484,7 +482,26 @@ static void draw_platform(struct engine* eng, float* vpMat,
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-/* ============= ДЕКОР ============= */
+/* ============= ДЕКОР + РЕГИСТРАЦИЯ КОЛЛИЗИЙ ============= */
+static void add_block(struct engine* eng, float x, float y, float z,
+                       float sx, float sy, float sz) {
+    if (eng->blockCount >= MAX_BLOCKS) return;
+    struct BlockCollider* b = &eng->blocks[eng->blockCount++];
+    b->x = x; b->y = y; b->z = z;
+    b->sx = sx; b->sy = sy; b->sz = sz;
+}
+
+/* Инициализация мира — вызвать один раз */
+void init_world_blocks(struct engine* eng) {
+    eng->blockCount = 0;
+    add_block(eng, 10,   0.5f,  10,   1, 1, 1);
+    add_block(eng, -8,   0.5f,  5,    1, 1, 1);
+    add_block(eng, 5,    0.5f, -12,   1, 1, 1);
+    add_block(eng, -15,  1.0f, -8,    2, 2, 2);
+    add_block(eng, 12,   0.75f,-5,    1.5f, 1.5f, 1.5f);
+    add_block(eng, -5,   0.5f,  15,   1, 1, 1);
+}
+
 static void render_decorations(struct engine* eng, float* vpMat,
                                 float eyeX, float eyeY, float eyeZ) {
     float id[16]; mat4_identity(id);
@@ -592,17 +609,20 @@ void draw_ui(struct engine* eng) {
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     if(eng->gameState==STATE_MENU){draw_menu(eng);glDisable(GL_BLEND);glEnable(GL_DEPTH_TEST);return;}
 
+    /* Джойстик — чёрный */
     float jx=JOY_X_OFFSET, jy=sh-JOY_Y_OFFSET;
-    draw_ring_ui(jx,jy,JOY_RADIUS,3,sw,sh,1,1,1,0.5f);
+    draw_ring_ui(jx,jy,JOY_RADIUS,3,sw,sh,0,0,0,0.7f);
     draw_circle_ui(jx+eng->moveDirX*JOY_RADIUS*0.6f,
-                   jy+eng->moveDirZ*JOY_RADIUS*0.6f,STICK_RADIUS,sw,sh,1,1,1,0.6f);
+                   jy+eng->moveDirZ*JOY_RADIUS*0.6f,STICK_RADIUS,sw,sh,0,0,0,0.8f);
+
+    /* Прыжок — чёрный */
     float bx=sw-JUMP_BTN_OFFSET, by=sh-JUMP_BTN_OFFSET;
-    draw_ring_ui(bx,by,JUMP_BTN_SIZE,3,sw,sh,1,1,1,0.5f);
+    draw_ring_ui(bx,by,JUMP_BTN_SIZE,3,sw,sh,0,0,0,0.7f);
     float as=JUMP_BTN_SIZE*0.3f;
     float anx=(bx/sw)*2-1, any=1-(by/sh)*2, aax=(as/sw)*2, aay=(as/sh)*2;
     float arrow[]={anx,any+aay, anx-aax,any-aay*0.5f, anx+aax,any-aay*0.5f};
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg,"col"),1,1,1,0.6f);
+    glUniform4f(glGetUniformLocation(uiProg,"col"),0,0,0,0.8f);
     glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,arrow); glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLES,0,3);
     glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
