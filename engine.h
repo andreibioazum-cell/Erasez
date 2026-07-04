@@ -22,8 +22,8 @@
 #define JUMP_FORCE      0.13f
 #define TERM_VEL       -0.3f
 
-#define CAM_DIST        6.0f
-#define CAM_HEIGHT      3.0f
+#define CAM_DIST        3.5f
+#define CAM_HEIGHT      2.0f
 
 #define PLATFORM_SIZE   50.0f
 #define PLATFORM_Y      0.0f
