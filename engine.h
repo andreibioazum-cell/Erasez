@@ -16,27 +16,20 @@
 
 #define PI              3.14159265f
 
-#define PLAYER_W        0.3f
-#define PLAYER_H        1.8f
-#define EYE_H           1.6f
-#define HEAD_MARGIN     0.1f
 #define GAME_FOV        1.2f
 
 #define GRAVITY         0.006f
 #define JUMP_FORCE      0.13f
 #define TERM_VEL       -0.3f
 
-#define CAM_DIST        5.0f
-#define CAM_HEIGHT      2.5f
-#define CAM_PITCH       0.35f
+#define CAM_DIST        6.0f
+#define CAM_HEIGHT      3.0f
 
 #define PLATFORM_SIZE   50.0f
 #define PLATFORM_Y      0.0f
 
 #define STATE_MENU      0
 #define STATE_PLAYING   1
-
-#define ANIM_SPEED      0.12f
 
 struct engine {
     struct android_app* app;
@@ -63,10 +56,7 @@ struct engine {
     bool joyTouched;
 
     float camRotY;
-
     float animTime;
-    float animLegAngle;
-    float animArmAngle;
 
     int gameState;
 };
