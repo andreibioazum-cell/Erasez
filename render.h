@@ -1,4 +1,4 @@
- #ifndef RENDER_H
+#ifndef RENDER_H
 #define RENDER_H
 
 #include <GLES2/gl2.h>
@@ -149,31 +149,17 @@ void init_ui_shader(void) {
     glDeleteShader(vs); glDeleteShader(fs);
 }
 
-/* =============================================================
- *  ROUNDED BOX MESH GENERATOR
- *  Генерирует куб со скруглёнными рёбрами и углами.
- *  Каждая вершина: pos(3) + norm(3) = 6 floats.
- *  seg — количество сегментов скругления (4 = хорошо).
- * ============================================================= */
-
+/* ============= ROUNDED BOX ============= */
 #define RBOX_SEG 4
-/* Максимум вершин для rounded box:
-   6 граней * (seg+1)^2 * 2 = грани
-   12 рёбер * (seg+1) * seg * 2
-   8 углов * seg * seg * 2
-   Примерно ~2000 вершин при seg=4 */
 #define RBOX_MAX_VERTS 4096
 
-typedef struct {
-    float* data;   /* pos+norm interleaved */
-    int count;     /* vertex count */
-} RBoxMesh;
+typedef struct { float* data; int count; } RBoxMesh;
 
 static void rbox_push(RBoxMesh* m, float px, float py, float pz,
                        float nx, float ny, float nz) {
     int i = m->count * 6;
-    m->data[i]   = px; m->data[i+1] = py; m->data[i+2] = pz;
-    m->data[i+3] = nx; m->data[i+4] = ny; m->data[i+5] = nz;
+    m->data[i]=px; m->data[i+1]=py; m->data[i+2]=pz;
+    m->data[i+3]=nx; m->data[i+4]=ny; m->data[i+5]=nz;
     m->count++;
 }
 
@@ -181,9 +167,9 @@ static void rbox_tri(RBoxMesh* m,
                       float x0,float y0,float z0, float nx0,float ny0,float nz0,
                       float x1,float y1,float z1, float nx1,float ny1,float nz1,
                       float x2,float y2,float z2, float nx2,float ny2,float nz2) {
-    rbox_push(m, x0,y0,z0, nx0,ny0,nz0);
-    rbox_push(m, x1,y1,z1, nx1,ny1,nz1);
-    rbox_push(m, x2,y2,z2, nx2,ny2,nz2);
+    rbox_push(m,x0,y0,z0,nx0,ny0,nz0);
+    rbox_push(m,x1,y1,z1,nx1,ny1,nz1);
+    rbox_push(m,x2,y2,z2,nx2,ny2,nz2);
 }
 
 static void rbox_quad(RBoxMesh* m,
@@ -195,175 +181,102 @@ static void rbox_quad(RBoxMesh* m,
     rbox_tri(m, x0,y0,z0,nx0,ny0,nz0, x2,y2,z2,nx2,ny2,nz2, x3,y3,z3,nx3,ny3,nz3);
 }
 
-/*
- * Генерирует скруглённый куб размером 1x1x1
- * с радиусом скругления r.
- * Результат масштабируется при рендере.
- */
 static RBoxMesh generate_rounded_box(float r) {
     RBoxMesh m;
     m.data = (float*)malloc(RBOX_MAX_VERTS * 6 * sizeof(float));
     m.count = 0;
-
     int seg = RBOX_SEG;
-    float hs = 0.5f;        /* half size */
-    float ir = hs - r;      /* inner extent */
+    float hs = 0.5f;
+    float ir = hs - r;
 
-    /* === 6 FLAT FACES === */
-    /* +Y face */
-    rbox_quad(&m,
-        -ir, hs, -ir, 0,1,0,   ir, hs, -ir, 0,1,0,
-         ir, hs,  ir, 0,1,0,  -ir, hs,  ir, 0,1,0);
-    /* -Y face */
-    rbox_quad(&m,
-        -ir,-hs,  ir, 0,-1,0,  ir,-hs,  ir, 0,-1,0,
-         ir,-hs, -ir, 0,-1,0, -ir,-hs, -ir, 0,-1,0);
-    /* +X face */
-    rbox_quad(&m,
-        hs, -ir, -ir, 1,0,0,  hs, -ir,  ir, 1,0,0,
-        hs,  ir,  ir, 1,0,0,  hs,  ir, -ir, 1,0,0);
-    /* -X face */
-    rbox_quad(&m,
-        -hs, -ir,  ir, -1,0,0, -hs, -ir, -ir, -1,0,0,
-        -hs,  ir, -ir, -1,0,0, -hs,  ir,  ir, -1,0,0);
-    /* +Z face */
-    rbox_quad(&m,
-        -ir, -ir, hs, 0,0,1,   ir, -ir, hs, 0,0,1,
-         ir,  ir, hs, 0,0,1,  -ir,  ir, hs, 0,0,1);
-    /* -Z face */
-    rbox_quad(&m,
-         ir, -ir,-hs, 0,0,-1, -ir, -ir,-hs, 0,0,-1,
-        -ir,  ir,-hs, 0,0,-1,  ir,  ir,-hs, 0,0,-1);
+    /* 6 граней */
+    rbox_quad(&m, -ir,hs,-ir, 0,1,0,  ir,hs,-ir, 0,1,0,  ir,hs,ir, 0,1,0,  -ir,hs,ir, 0,1,0);
+    rbox_quad(&m, -ir,-hs,ir, 0,-1,0, ir,-hs,ir, 0,-1,0, ir,-hs,-ir, 0,-1,0, -ir,-hs,-ir, 0,-1,0);
+    rbox_quad(&m, hs,-ir,-ir, 1,0,0,  hs,-ir,ir, 1,0,0,  hs,ir,ir, 1,0,0,  hs,ir,-ir, 1,0,0);
+    rbox_quad(&m, -hs,-ir,ir, -1,0,0, -hs,-ir,-ir, -1,0,0, -hs,ir,-ir, -1,0,0, -hs,ir,ir, -1,0,0);
+    rbox_quad(&m, -ir,-ir,hs, 0,0,1,  ir,-ir,hs, 0,0,1,  ir,ir,hs, 0,0,1,  -ir,ir,hs, 0,0,1);
+    rbox_quad(&m, ir,-ir,-hs, 0,0,-1, -ir,-ir,-hs, 0,0,-1, -ir,ir,-hs, 0,0,-1, ir,ir,-hs, 0,0,-1);
 
-    /* === 12 EDGE STRIPS === */
-    struct { int ax; float cx,cy; float dx,dy; } edges[12];
-    /* Каждое ребро: ось скругления, центр дуги, направления */
-
+    /* 12 рёбер */
     for (int i = 0; i < seg; i++) {
-        float a0 = (float)i / seg * (PI * 0.5f);
-        float a1 = (float)(i + 1) / seg * (PI * 0.5f);
-        float c0 = cosf(a0), s0 = sinf(a0);
-        float c1 = cosf(a1), s1 = sinf(a1);
+        float a0 = (float)i/seg*(PI*0.5f), a1 = (float)(i+1)/seg*(PI*0.5f);
+        float c0=cosf(a0),s0=sinf(a0),c1=cosf(a1),s1=sinf(a1);
 
-        /* Edges along Z axis (4 edges) */
-        /* +X+Y */
-        rbox_quad(&m,
-            ir+r*c0, ir+r*s0, -ir, c0,s0,0,  ir+r*c1, ir+r*s1, -ir, c1,s1,0,
-            ir+r*c1, ir+r*s1,  ir, c1,s1,0,  ir+r*c0, ir+r*s0,  ir, c0,s0,0);
-        /* -X+Y */
-        rbox_quad(&m,
-            -ir-r*c1, ir+r*s1, -ir, -c1,s1,0, -ir-r*c0, ir+r*s0, -ir, -c0,s0,0,
-            -ir-r*c0, ir+r*s0,  ir, -c0,s0,0, -ir-r*c1, ir+r*s1,  ir, -c1,s1,0);
-        /* +X-Y */
-        rbox_quad(&m,
-            ir+r*c1, -ir-r*s1, -ir, c1,-s1,0,  ir+r*c0, -ir-r*s0, -ir, c0,-s0,0,
-            ir+r*c0, -ir-r*s0,  ir, c0,-s0,0,  ir+r*c1, -ir-r*s1,  ir, c1,-s1,0);
-        /* -X-Y */
-        rbox_quad(&m,
-            -ir-r*c0, -ir-r*s0, -ir, -c0,-s0,0, -ir-r*c1, -ir-r*s1, -ir, -c1,-s1,0,
-            -ir-r*c1, -ir-r*s1,  ir, -c1,-s1,0, -ir-r*c0, -ir-r*s0,  ir, -c0,-s0,0);
+        rbox_quad(&m, ir+r*c0,ir+r*s0,-ir, c0,s0,0, ir+r*c1,ir+r*s1,-ir, c1,s1,0,
+                      ir+r*c1,ir+r*s1,ir, c1,s1,0, ir+r*c0,ir+r*s0,ir, c0,s0,0);
+        rbox_quad(&m, -ir-r*c1,ir+r*s1,-ir, -c1,s1,0, -ir-r*c0,ir+r*s0,-ir, -c0,s0,0,
+                      -ir-r*c0,ir+r*s0,ir, -c0,s0,0, -ir-r*c1,ir+r*s1,ir, -c1,s1,0);
+        rbox_quad(&m, ir+r*c1,-ir-r*s1,-ir, c1,-s1,0, ir+r*c0,-ir-r*s0,-ir, c0,-s0,0,
+                      ir+r*c0,-ir-r*s0,ir, c0,-s0,0, ir+r*c1,-ir-r*s1,ir, c1,-s1,0);
+        rbox_quad(&m, -ir-r*c0,-ir-r*s0,-ir, -c0,-s0,0, -ir-r*c1,-ir-r*s1,-ir, -c1,-s1,0,
+                      -ir-r*c1,-ir-r*s1,ir, -c1,-s1,0, -ir-r*c0,-ir-r*s0,ir, -c0,-s0,0);
 
-        /* Edges along X axis (4 edges) */
-        /* +Y+Z */
-        rbox_quad(&m,
-            -ir, ir+r*c0, ir+r*s0, 0,c0,s0,   ir, ir+r*c0, ir+r*s0, 0,c0,s0,
-             ir, ir+r*c1, ir+r*s1, 0,c1,s1,  -ir, ir+r*c1, ir+r*s1, 0,c1,s1);
-        /* +Y-Z */
-        rbox_quad(&m,
-             ir, ir+r*c0, -ir-r*s0, 0,c0,-s0, -ir, ir+r*c0, -ir-r*s0, 0,c0,-s0,
-            -ir, ir+r*c1, -ir-r*s1, 0,c1,-s1,  ir, ir+r*c1, -ir-r*s1, 0,c1,-s1);
-        /* -Y+Z */
-        rbox_quad(&m,
-             ir, -ir-r*c0, ir+r*s0, 0,-c0,s0, -ir, -ir-r*c0, ir+r*s0, 0,-c0,s0,
-            -ir, -ir-r*c1, ir+r*s1, 0,-c1,s1,  ir, -ir-r*c1, ir+r*s1, 0,-c1,s1);
-        /* -Y-Z */
-        rbox_quad(&m,
-            -ir, -ir-r*c0, -ir-r*s0, 0,-c0,-s0,  ir, -ir-r*c0, -ir-r*s0, 0,-c0,-s0,
-             ir, -ir-r*c1, -ir-r*s1, 0,-c1,-s1, -ir, -ir-r*c1, -ir-r*s1, 0,-c1,-s1);
+        rbox_quad(&m, -ir,ir+r*c0,ir+r*s0, 0,c0,s0, ir,ir+r*c0,ir+r*s0, 0,c0,s0,
+                      ir,ir+r*c1,ir+r*s1, 0,c1,s1, -ir,ir+r*c1,ir+r*s1, 0,c1,s1);
+        rbox_quad(&m, ir,ir+r*c0,-ir-r*s0, 0,c0,-s0, -ir,ir+r*c0,-ir-r*s0, 0,c0,-s0,
+                      -ir,ir+r*c1,-ir-r*s1, 0,c1,-s1, ir,ir+r*c1,-ir-r*s1, 0,c1,-s1);
+        rbox_quad(&m, ir,-ir-r*c0,ir+r*s0, 0,-c0,s0, -ir,-ir-r*c0,ir+r*s0, 0,-c0,s0,
+                      -ir,-ir-r*c1,ir+r*s1, 0,-c1,s1, ir,-ir-r*c1,ir+r*s1, 0,-c1,s1);
+        rbox_quad(&m, -ir,-ir-r*c0,-ir-r*s0, 0,-c0,-s0, ir,-ir-r*c0,-ir-r*s0, 0,-c0,-s0,
+                      ir,-ir-r*c1,-ir-r*s1, 0,-c1,-s1, -ir,-ir-r*c1,-ir-r*s1, 0,-c1,-s1);
 
-        /* Edges along Y axis (4 edges) */
-        /* +X+Z */
-        rbox_quad(&m,
-            ir+r*s0, -ir, ir+r*c0, s0,0,c0,  ir+r*s0, ir, ir+r*c0, s0,0,c0,
-            ir+r*s1,  ir, ir+r*c1, s1,0,c1,  ir+r*s1,-ir, ir+r*c1, s1,0,c1);
-        /* -X+Z */
-        rbox_quad(&m,
-            -ir-r*s0,  ir, ir+r*c0, -s0,0,c0, -ir-r*s0, -ir, ir+r*c0, -s0,0,c0,
-            -ir-r*s1, -ir, ir+r*c1, -s1,0,c1, -ir-r*s1,  ir, ir+r*c1, -s1,0,c1);
-        /* +X-Z */
-        rbox_quad(&m,
-            ir+r*s0,  ir, -ir-r*c0, s0,0,-c0, ir+r*s0, -ir, -ir-r*c0, s0,0,-c0,
-            ir+r*s1, -ir, -ir-r*c1, s1,0,-c1, ir+r*s1,  ir, -ir-r*c1, s1,0,-c1);
-        /* -X-Z */
-        rbox_quad(&m,
-            -ir-r*s0, -ir, -ir-r*c0, -s0,0,-c0, -ir-r*s0, ir, -ir-r*c0, -s0,0,-c0,
-            -ir-r*s1,  ir, -ir-r*c1, -s1,0,-c1, -ir-r*s1,-ir, -ir-r*c1, -s1,0,-c1);
+        rbox_quad(&m, ir+r*s0,-ir,ir+r*c0, s0,0,c0, ir+r*s0,ir,ir+r*c0, s0,0,c0,
+                      ir+r*s1,ir,ir+r*c1, s1,0,c1, ir+r*s1,-ir,ir+r*c1, s1,0,c1);
+        rbox_quad(&m, -ir-r*s0,ir,ir+r*c0, -s0,0,c0, -ir-r*s0,-ir,ir+r*c0, -s0,0,c0,
+                      -ir-r*s1,-ir,ir+r*c1, -s1,0,c1, -ir-r*s1,ir,ir+r*c1, -s1,0,c1);
+        rbox_quad(&m, ir+r*s0,ir,-ir-r*c0, s0,0,-c0, ir+r*s0,-ir,-ir-r*c0, s0,0,-c0,
+                      ir+r*s1,-ir,-ir-r*c1, s1,0,-c1, ir+r*s1,ir,-ir-r*c1, s1,0,-c1);
+        rbox_quad(&m, -ir-r*s0,-ir,-ir-r*c0, -s0,0,-c0, -ir-r*s0,ir,-ir-r*c0, -s0,0,-c0,
+                      -ir-r*s1,ir,-ir-r*c1, -s1,0,-c1, -ir-r*s1,-ir,-ir-r*c1, -s1,0,-c1);
     }
 
-    /* === 8 CORNER PATCHES === */
+    /* 8 углов */
     float signs[8][3] = {
-        { 1, 1, 1}, {-1, 1, 1}, { 1,-1, 1}, {-1,-1, 1},
-        { 1, 1,-1}, {-1, 1,-1}, { 1,-1,-1}, {-1,-1,-1}
+        {1,1,1},{-1,1,1},{1,-1,1},{-1,-1,1},
+        {1,1,-1},{-1,1,-1},{1,-1,-1},{-1,-1,-1}
     };
-
     for (int ci = 0; ci < 8; ci++) {
-        float sx = signs[ci][0], sy = signs[ci][1], sz = signs[ci][2];
-        float cx = sx * ir, cy = sy * ir, cz = sz * ir;
-
+        float gx=signs[ci][0], gy=signs[ci][1], gz=signs[ci][2];
+        float cx=gx*ir, cy=gy*ir, cz=gz*ir;
         for (int j = 0; j < seg; j++) {
-            float phi0 = (float)j / seg * (PI * 0.5f);
-            float phi1 = (float)(j + 1) / seg * (PI * 0.5f);
+            float p0=(float)j/seg*(PI*0.5f), p1=(float)(j+1)/seg*(PI*0.5f);
             for (int k = 0; k < seg; k++) {
-                float th0 = (float)k / seg * (PI * 0.5f);
-                float th1 = (float)(k + 1) / seg * (PI * 0.5f);
-
-                /* 4 нормали на патче */
-                float n00x = sx*cosf(phi0)*cosf(th0), n00y = sy*sinf(phi0), n00z = sz*cosf(phi0)*sinf(th0);
-                float n10x = sx*cosf(phi1)*cosf(th0), n10y = sy*sinf(phi1), n10z = sz*cosf(phi1)*sinf(th0);
-                float n01x = sx*cosf(phi0)*cosf(th1), n01y = sy*sinf(phi0), n01z = sz*cosf(phi0)*sinf(th1);
-                float n11x = sx*cosf(phi1)*cosf(th1), n11y = sy*sinf(phi1), n11z = sz*cosf(phi1)*sinf(th1);
-
-                float p00x = cx + r*n00x, p00y = cy + r*n00y, p00z = cz + r*n00z;
-                float p10x = cx + r*n10x, p10y = cy + r*n10y, p10z = cz + r*n10z;
-                float p01x = cx + r*n01x, p01y = cy + r*n01y, p01z = cz + r*n01z;
-                float p11x = cx + r*n11x, p11y = cy + r*n11y, p11z = cz + r*n11z;
-
-                if (sx * sy * sz > 0) {
-                    rbox_quad(&m,
-                        p00x,p00y,p00z, n00x,n00y,n00z,
-                        p10x,p10y,p10z, n10x,n10y,n10z,
-                        p11x,p11y,p11z, n11x,n11y,n11z,
-                        p01x,p01y,p01z, n01x,n01y,n01z);
-                } else {
-                    rbox_quad(&m,
-                        p00x,p00y,p00z, n00x,n00y,n00z,
-                        p01x,p01y,p01z, n01x,n01y,n01z,
-                        p11x,p11y,p11z, n11x,n11y,n11z,
-                        p10x,p10y,p10z, n10x,n10y,n10z);
-                }
+                float t0=(float)k/seg*(PI*0.5f), t1=(float)(k+1)/seg*(PI*0.5f);
+                float n00x=gx*cosf(p0)*cosf(t0),n00y=gy*sinf(p0),n00z=gz*cosf(p0)*sinf(t0);
+                float n10x=gx*cosf(p1)*cosf(t0),n10y=gy*sinf(p1),n10z=gz*cosf(p1)*sinf(t0);
+                float n01x=gx*cosf(p0)*cosf(t1),n01y=gy*sinf(p0),n01z=gz*cosf(p0)*sinf(t1);
+                float n11x=gx*cosf(p1)*cosf(t1),n11y=gy*sinf(p1),n11z=gz*cosf(p1)*sinf(t1);
+                float px0=cx+r*n00x,py0=cy+r*n00y,pz0=cz+r*n00z;
+                float px1=cx+r*n10x,py1=cy+r*n10y,pz1=cz+r*n10z;
+                float px2=cx+r*n01x,py2=cy+r*n01y,pz2=cz+r*n01z;
+                float px3=cx+r*n11x,py3=cy+r*n11y,pz3=cz+r*n11z;
+                if (gx*gy*gz > 0)
+                    rbox_quad(&m, px0,py0,pz0,n00x,n00y,n00z, px1,py1,pz1,n10x,n10y,n10z,
+                                  px3,py3,pz3,n11x,n11y,n11z, px2,py2,pz2,n01x,n01y,n01z);
+                else
+                    rbox_quad(&m, px0,py0,pz0,n00x,n00y,n00z, px2,py2,pz2,n01x,n01y,n01z,
+                                  px3,py3,pz3,n11x,n11y,n11z, px1,py1,pz1,n10x,n10y,n10z);
             }
         }
     }
-
     return m;
 }
 
-/* VBO для скруглённого куба */
 static GLuint rboxVBO = 0;
 static int rboxVertCount = 0;
 
 void init_cube_vbo(void) {
-    RBoxMesh m = generate_rounded_box(0.08f);
+    RBoxMesh m = generate_rounded_box(0.06f);
     rboxVertCount = m.count;
     glGenBuffers(1, &rboxVBO);
     glBindBuffer(GL_ARRAY_BUFFER, rboxVBO);
     glBufferData(GL_ARRAY_BUFFER, m.count * 6 * sizeof(float), m.data, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     free(m.data);
-    LOGI("RoundedBox: %d vertices", rboxVertCount);
+    LOGI("RoundedBox: %d verts", rboxVertCount);
 }
 
-/* ============= DRAW PART (иерархический) ============= */
+/* ============= DRAW PART ============= */
 static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
                       float pivotX, float pivotY, float pivotZ,
                       float sx, float sy, float sz,
@@ -375,15 +288,10 @@ static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
     float t1[16], t2[16], t3[16], model[16], mvp[16];
 
     mat4_translate(T, pivotX, pivotY, pivotZ);
-    mat4_rotate_y(RY, ry);
-    mat4_rotate_x(RX, rx);
-    mat4_rotate_z(RZ, rz);
+    mat4_rotate_y(RY, ry); mat4_rotate_x(RX, rx); mat4_rotate_z(RZ, rz);
     mat4_scale(S, sx, sy, sz);
 
-    mat4_mul(t1, RY, RX);
-    mat4_mul(t2, t1, RZ);
-    mat4_mul(t3, T, t2);
-
+    mat4_mul(t1, RY, RX); mat4_mul(t2, t1, RZ); mat4_mul(t3, T, t2);
     mat4_mul(model, parentMat, t3);
     if (outModel) memcpy(outModel, model, 64);
 
@@ -393,39 +301,36 @@ static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
     mat4_mul(mvp, vpMat, modelFull);
 
     glUseProgram(eng->colorProgram);
-    glUniformMatrix4fv(glGetUniformLocation(eng->colorProgram, "uMVP"), 1, GL_FALSE, mvp);
-    glUniformMatrix4fv(glGetUniformLocation(eng->colorProgram, "uModel"), 1, GL_FALSE, modelFull);
-    glUniform3f(glGetUniformLocation(eng->colorProgram, "uColor"), cr, cg, cb);
-    glUniform3f(glGetUniformLocation(eng->colorProgram, "uCamPos"), eyeX, eyeY, eyeZ);
+    glUniformMatrix4fv(glGetUniformLocation(eng->colorProgram,"uMVP"),1,GL_FALSE,mvp);
+    glUniformMatrix4fv(glGetUniformLocation(eng->colorProgram,"uModel"),1,GL_FALSE,modelFull);
+    glUniform3f(glGetUniformLocation(eng->colorProgram,"uColor"),cr,cg,cb);
+    glUniform3f(glGetUniformLocation(eng->colorProgram,"uCamPos"),eyeX,eyeY,eyeZ);
     glBindBuffer(GL_ARRAY_BUFFER, rboxVBO);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);  glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12); glEnableVertexAttribArray(1);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,24,(void*)0); glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,24,(void*)12); glEnableVertexAttribArray(1);
     glDrawArrays(GL_TRIANGLES, 0, rboxVertCount);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-/* ============= R15 РАЗМЕРЫ ============= */
-#define HEAD_W   0.55f
-#define HEAD_H   0.55f
-#define HEAD_D   0.55f
-#define UTORSO_W 0.90f
-#define UTORSO_H 0.70f
-#define UTORSO_D 0.50f
-#define LTORSO_W 0.90f
-#define LTORSO_H 0.40f
-#define LTORSO_D 0.50f
-#define UARM_W   0.39f
-#define UARM_H   0.40f
-#define UARM_D   0.39f
-#define LARM_W   0.39f
-#define LARM_H   0.65f
-#define LARM_D   0.39f
-#define ULEG_W   0.40f
-#define ULEG_H   0.50f
-#define ULEG_D   0.40f
-#define LLEG_W   0.40f
-#define LLEG_H   0.50f
-#define LLEG_D   0.40f
+/* ============= R6 ПЕРСОНАЖ (маленький) ============= */
+/* Масштаб ~0.6 от обычного */
+#define R6_SCALE     0.6f
+
+#define R6_HEAD_W    (0.50f * R6_SCALE)
+#define R6_HEAD_H    (0.50f * R6_SCALE)
+#define R6_HEAD_D    (0.50f * R6_SCALE)
+
+#define R6_TORSO_W   (0.80f * R6_SCALE)
+#define R6_TORSO_H   (0.80f * R6_SCALE)
+#define R6_TORSO_D   (0.40f * R6_SCALE)
+
+#define R6_ARM_W     (0.30f * R6_SCALE)
+#define R6_ARM_H     (0.80f * R6_SCALE)
+#define R6_ARM_D     (0.30f * R6_SCALE)
+
+#define R6_LEG_W     (0.35f * R6_SCALE)
+#define R6_LEG_H     (0.80f * R6_SCALE)
+#define R6_LEG_D     (0.35f * R6_SCALE)
 
 /* Цвета */
 #define COL_HEAD_R  0.96f
@@ -434,14 +339,13 @@ static void draw_part(struct engine* eng, float* vpMat, float* parentMat,
 #define COL_TORSO_R 0.05f
 #define COL_TORSO_G 0.37f
 #define COL_TORSO_B 0.74f
-#define COL_LIMB_R  0.96f
-#define COL_LIMB_G  0.80f
-#define COL_LIMB_B  0.19f
+#define COL_ARM_R   0.96f
+#define COL_ARM_G   0.80f
+#define COL_ARM_B   0.19f
 #define COL_LEG_R   0.63f
 #define COL_LEG_G   0.74f
 #define COL_LEG_B   0.07f
 
-/* ============= РЕНДЕР ПЕРСОНАЖА ============= */
 static void render_character(struct engine* eng, float* vpMat,
                               float eyeX, float eyeY, float eyeZ) {
     float px = eng->playerPos[0];
@@ -453,22 +357,19 @@ static void render_character(struct engine* eng, float* vpMat,
     bool walking = eng->isMoving && (eng->moveDirX != 0 || eng->moveDirZ != 0);
     bool inAir = !eng->onGround;
 
-    float legSwing = 0, armSwing = 0, torsoTwist = 0;
-    float lKnee = 0, rKnee = 0;
-
+    float legSwing = 0, armSwing = 0;
     if (walking) {
-        legSwing = sinf(t) * 0.7f;
+        legSwing = sinf(t) * 0.6f;
         armSwing = sinf(t) * 0.5f;
-        torsoTwist = sinf(t) * 0.04f;
-        float ls = sinf(t), rs = sinf(t + PI);
-        lKnee = ls < 0 ? -ls * 0.5f : 0;
-        rKnee = rs < 0 ? -rs * 0.5f : 0;
     } else if (inAir) {
-        legSwing = -0.3f;
-        armSwing = -0.5f;
+        legSwing = -0.2f;
+        armSwing = -0.3f;
     }
 
-    float rootY = py + ULEG_H + LLEG_H + LTORSO_H * 0.5f;
+    /* Корень — центр торса */
+    /* Высота: ноги + пол торса */
+    float rootY = py + R6_LEG_H + R6_TORSO_H * 0.5f;
+
     float rootMat[16];
     {
         float T[16], R[16];
@@ -477,65 +378,57 @@ static void render_character(struct engine* eng, float* vpMat,
         mat4_mul(rootMat, T, R);
     }
 
-    float ltMat[16];
+    /* Торс */
+    float torsoMat[16];
     draw_part(eng, vpMat, rootMat, 0,0,0,
-              LTORSO_W, LTORSO_H, LTORSO_D, 0, torsoTwist, 0,
-              COL_TORSO_R, COL_TORSO_G, COL_TORSO_B, eyeX,eyeY,eyeZ, ltMat);
+              R6_TORSO_W, R6_TORSO_H, R6_TORSO_D, 0,0,0,
+              COL_TORSO_R, COL_TORSO_G, COL_TORSO_B,
+              eyeX, eyeY, eyeZ, torsoMat);
 
-    float utMat[16];
-    draw_part(eng, vpMat, ltMat,
-              0, LTORSO_H*0.5f+UTORSO_H*0.5f, 0,
-              UTORSO_W, UTORSO_H, UTORSO_D, 0, -torsoTwist, 0,
-              COL_TORSO_R, COL_TORSO_G, COL_TORSO_B, eyeX,eyeY,eyeZ, utMat);
+    /* Голова */
+    draw_part(eng, vpMat, torsoMat,
+              0, R6_TORSO_H*0.5f + R6_HEAD_H*0.5f, 0,
+              R6_HEAD_W, R6_HEAD_H, R6_HEAD_D, 0,0,0,
+              COL_HEAD_R, COL_HEAD_G, COL_HEAD_B,
+              eyeX, eyeY, eyeZ, NULL);
 
-    draw_part(eng, vpMat, utMat,
-              0, UTORSO_H*0.5f+HEAD_H*0.5f, 0,
-              HEAD_W, HEAD_H, HEAD_D, 0,0,0,
-              COL_HEAD_R, COL_HEAD_G, COL_HEAD_B, eyeX,eyeY,eyeZ, NULL);
+    /* Левая рука — pivot на плече, рука свисает вниз */
+    float armPivotY = R6_TORSO_H * 0.5f - R6_ARM_W * 0.3f;
+    float armOffX = R6_TORSO_W * 0.5f + R6_ARM_W * 0.5f;
 
-    float luaMat[16];
-    draw_part(eng, vpMat, utMat,
-              -(UTORSO_W*0.5f+UARM_W*0.5f), UTORSO_H*0.35f, 0,
-              UARM_W, UARM_H, UARM_D, -armSwing, 0, 0,
-              COL_LIMB_R, COL_LIMB_G, COL_LIMB_B, eyeX,eyeY,eyeZ, luaMat);
+    float laMat[16];
+    draw_part(eng, vpMat, torsoMat,
+              -armOffX, armPivotY, 0,
+              R6_ARM_W, R6_ARM_H, R6_ARM_D,
+              -armSwing, 0, 0,
+              COL_ARM_R, COL_ARM_G, COL_ARM_B,
+              eyeX, eyeY, eyeZ, NULL);
 
-    draw_part(eng, vpMat, luaMat,
-              0, -(UARM_H*0.5f+LARM_H*0.5f), 0,
-              LARM_W, LARM_H, LARM_D, 0,0,0,
-              COL_LIMB_R, COL_LIMB_G, COL_LIMB_B, eyeX,eyeY,eyeZ, NULL);
+    /* Правая рука */
+    draw_part(eng, vpMat, torsoMat,
+              armOffX, armPivotY, 0,
+              R6_ARM_W, R6_ARM_H, R6_ARM_D,
+              armSwing, 0, 0,
+              COL_ARM_R, COL_ARM_G, COL_ARM_B,
+              eyeX, eyeY, eyeZ, NULL);
 
-    float ruaMat[16];
-    draw_part(eng, vpMat, utMat,
-              (UTORSO_W*0.5f+UARM_W*0.5f), UTORSO_H*0.35f, 0,
-              UARM_W, UARM_H, UARM_D, armSwing, 0, 0,
-              COL_LIMB_R, COL_LIMB_G, COL_LIMB_B, eyeX,eyeY,eyeZ, ruaMat);
+    /* Левая нога — pivot на бедре */
+    float legOffX = R6_TORSO_W * 0.25f;
 
-    draw_part(eng, vpMat, ruaMat,
-              0, -(UARM_H*0.5f+LARM_H*0.5f), 0,
-              LARM_W, LARM_H, LARM_D, 0,0,0,
-              COL_LIMB_R, COL_LIMB_G, COL_LIMB_B, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng, vpMat, torsoMat,
+              -legOffX, -(R6_TORSO_H*0.5f), 0,
+              R6_LEG_W, R6_LEG_H, R6_LEG_D,
+              legSwing, 0, 0,
+              COL_LEG_R, COL_LEG_G, COL_LEG_B,
+              eyeX, eyeY, eyeZ, NULL);
 
-    float lulMat[16];
-    draw_part(eng, vpMat, ltMat,
-              -0.225f, -(LTORSO_H*0.5f+ULEG_H*0.5f), 0,
-              ULEG_W, ULEG_H, ULEG_D, legSwing, 0, 0,
-              COL_LEG_R, COL_LEG_G, COL_LEG_B, eyeX,eyeY,eyeZ, lulMat);
-
-    draw_part(eng, vpMat, lulMat,
-              0, -(ULEG_H*0.5f+LLEG_H*0.5f), 0,
-              LLEG_W, LLEG_H, LLEG_D, lKnee, 0, 0,
-              COL_LEG_R, COL_LEG_G, COL_LEG_B, eyeX,eyeY,eyeZ, NULL);
-
-    float rulMat[16];
-    draw_part(eng, vpMat, ltMat,
-              0.225f, -(LTORSO_H*0.5f+ULEG_H*0.5f), 0,
-              ULEG_W, ULEG_H, ULEG_D, -legSwing, 0, 0,
-              COL_LEG_R, COL_LEG_G, COL_LEG_B, eyeX,eyeY,eyeZ, rulMat);
-
-    draw_part(eng, vpMat, rulMat,
-              0, -(ULEG_H*0.5f+LLEG_H*0.5f), 0,
-              LLEG_W, LLEG_H, LLEG_D, rKnee, 0, 0,
-              COL_LEG_R, COL_LEG_G, COL_LEG_B, eyeX,eyeY,eyeZ, NULL);
+    /* Правая нога */
+    draw_part(eng, vpMat, torsoMat,
+              legOffX, -(R6_TORSO_H*0.5f), 0,
+              R6_LEG_W, R6_LEG_H, R6_LEG_D,
+              -legSwing, 0, 0,
+              COL_LEG_R, COL_LEG_G, COL_LEG_B,
+              eyeX, eyeY, eyeZ, NULL);
 }
 
 /* ============= ПЛАТФОРМА ============= */
@@ -546,8 +439,8 @@ void init_platform_vbo(void) {
     float uv = PLATFORM_SIZE / 4.0f;
     float data[] = {
         -hs,0,-hs, 0,1,0, 0,0,      hs,0,-hs, 0,1,0, uv,0,
-         hs,0, hs, 0,1,0, uv,uv,   -hs,0,-hs, 0,1,0, 0,0,
-         hs,0, hs, 0,1,0, uv,uv,   -hs,0, hs, 0,1,0, 0,uv,
+         hs,0,hs, 0,1,0, uv,uv,    -hs,0,-hs, 0,1,0, 0,0,
+         hs,0,hs, 0,1,0, uv,uv,    -hs,0,hs, 0,1,0, 0,uv,
     };
     glGenBuffers(1, &platVBO);
     glBindBuffer(GL_ARRAY_BUFFER, platVBO);
@@ -561,16 +454,16 @@ static void draw_platform(struct engine* eng, float* vpMat,
     mat4_translate(T, 0, 0, 0);
     mat4_mul(mvp, vpMat, T);
     glUseProgram(eng->texProgram);
-    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram, "uMVP"), 1, GL_FALSE, mvp);
-    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram, "uModel"), 1, GL_FALSE, T);
-    glUniform3f(glGetUniformLocation(eng->texProgram, "uCamPos"), eyeX, eyeY, eyeZ);
+    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram,"uMVP"),1,GL_FALSE,mvp);
+    glUniformMatrix4fv(glGetUniformLocation(eng->texProgram,"uModel"),1,GL_FALSE,T);
+    glUniform3f(glGetUniformLocation(eng->texProgram,"uCamPos"),eyeX,eyeY,eyeZ);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, eng->texPlatform);
-    glUniform1i(glGetUniformLocation(eng->texProgram, "uTex"), 0);
+    glUniform1i(glGetUniformLocation(eng->texProgram,"uTex"),0);
     glBindBuffer(GL_ARRAY_BUFFER, platVBO);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);  glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 32, (void*)12); glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, (void*)24); glEnableVertexAttribArray(2);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,32,(void*)0); glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,32,(void*)12); glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,32,(void*)24); glEnableVertexAttribArray(2);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
@@ -578,29 +471,28 @@ static void draw_platform(struct engine* eng, float* vpMat,
 /* ============= ДЕКОР ============= */
 static void render_decorations(struct engine* eng, float* vpMat,
                                 float eyeX, float eyeY, float eyeZ) {
-    float ident[16];
-    mat4_identity(ident);
-    draw_part(eng, vpMat, ident, 10,0.5f,10, 1,1,1, 0,0,0, 0.85f,0.2f,0.2f, eyeX,eyeY,eyeZ, NULL);
-    draw_part(eng, vpMat, ident, -8,0.5f,5, 1,1,1, 0,0,0, 0.2f,0.2f,0.85f, eyeX,eyeY,eyeZ, NULL);
-    draw_part(eng, vpMat, ident, 5,0.5f,-12, 1,1,1, 0,0,0, 0.85f,0.85f,0.2f, eyeX,eyeY,eyeZ, NULL);
-    draw_part(eng, vpMat, ident, -15,1.0f,-8, 2,2,2, 0,0,0, 0.85f,0.5f,0.2f, eyeX,eyeY,eyeZ, NULL);
-    draw_part(eng, vpMat, ident, 12,0.75f,-5, 1.5f,1.5f,1.5f, 0,0,0, 0.6f,0.2f,0.7f, eyeX,eyeY,eyeZ, NULL);
-    draw_part(eng, vpMat, ident, -5,0.5f,15, 1,1,1, 0,0,0, 0.2f,0.7f,0.7f, eyeX,eyeY,eyeZ, NULL);
+    float id[16]; mat4_identity(id);
+    draw_part(eng,vpMat,id, 10,0.5f,10, 1,1,1, 0,0,0, 0.85f,0.2f,0.2f, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng,vpMat,id, -8,0.5f,5, 1,1,1, 0,0,0, 0.2f,0.2f,0.85f, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng,vpMat,id, 5,0.5f,-12, 1,1,1, 0,0,0, 0.85f,0.85f,0.2f, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng,vpMat,id, -15,1.0f,-8, 2,2,2, 0,0,0, 0.85f,0.5f,0.2f, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng,vpMat,id, 12,0.75f,-5, 1.5f,1.5f,1.5f, 0,0,0, 0.6f,0.2f,0.7f, eyeX,eyeY,eyeZ, NULL);
+    draw_part(eng,vpMat,id, -5,0.5f,15, 1,1,1, 0,0,0, 0.2f,0.7f,0.7f, eyeX,eyeY,eyeZ, NULL);
 }
 
-/* ============= РЕНДЕР СЦЕНЫ ============= */
+/* ============= СЦЕНА ============= */
 void render_world(struct engine* eng) {
     glEnable(GL_DEPTH_TEST);
     float camY = eng->camRotY;
-    float eyeX = eng->playerPos[0] - sinf(camY) * CAM_DIST;
+    float eyeX = eng->playerPos[0] - sinf(camY)*CAM_DIST;
     float eyeY = eng->playerPos[1] + CAM_HEIGHT;
-    float eyeZ = eng->playerPos[2] + cosf(camY) * CAM_DIST;
+    float eyeZ = eng->playerPos[2] + cosf(camY)*CAM_DIST;
     float tgtX = eng->playerPos[0];
-    float tgtY = eng->playerPos[1] + 1.2f;
+    float tgtY = eng->playerPos[1] + 0.8f;
     float tgtZ = eng->playerPos[2];
 
     float proj[16], view[16], vp[16];
-    mat4_perspective(proj, GAME_FOV, (float)eng->width / (float)eng->height, 0.1f, 200.0f);
+    mat4_perspective(proj, GAME_FOV, (float)eng->width/(float)eng->height, 0.1f, 200.0f);
     mat4_lookat_pos(view, eyeX, eyeY, eyeZ, tgtX, tgtY, tgtZ);
     mat4_mul(vp, proj, view);
 
@@ -612,95 +504,91 @@ void render_world(struct engine* eng) {
 /* ============= UI ============= */
 static void draw_rect_ui(float cx, float cy, float hw, float hh, int sw, int sh,
                           float cr, float cg, float cb, float ca) {
-    float nx = (cx/sw)*2.0f-1.0f, ny = 1.0f-(cy/sh)*2.0f;
-    float rw = (hw/sw)*2.0f, rh = (hh/sh)*2.0f;
-    float v[] = {nx-rw,ny-rh, nx+rw,ny-rh, nx+rw,ny+rh, nx-rw,ny-rh, nx+rw,ny+rh, nx-rw,ny+rh};
+    float nx=(cx/sw)*2.0f-1.0f, ny=1.0f-(cy/sh)*2.0f;
+    float rw=(hw/sw)*2.0f, rh=(hh/sh)*2.0f;
+    float v[]={nx-rw,ny-rh, nx+rw,ny-rh, nx+rw,ny+rh, nx-rw,ny-rh, nx+rw,ny+rh, nx-rw,ny+rh};
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg, "col"), cr,cg,cb,ca);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, v); glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glUniform4f(glGetUniformLocation(uiProg,"col"),cr,cg,cb,ca);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,v); glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLES,0,6);
 }
 
 static void draw_ring_ui(float cx, float cy, float r, float thick,
                           int w, int h, float cr, float cg, float cb, float ca) {
-    float ndcX = (cx/w)*2-1, ndcY = 1-(cy/h)*2;
-    float rxo = (r/w)*2, ryo = (r/h)*2, rxi = ((r-thick)/w)*2, ryi = ((r-thick)/h)*2;
-    float verts[(32+1)*4]; int segs = 32;
-    for (int i = 0; i <= segs; i++) {
-        float a = (float)i/segs*2*PI, c = cosf(a), s = sinf(a);
-        verts[i*4] = ndcX+c*rxo; verts[i*4+1] = ndcY+s*ryo;
-        verts[i*4+2] = ndcX+c*rxi; verts[i*4+3] = ndcY+s*ryi;
+    float ndcX=(cx/w)*2-1, ndcY=1-(cy/h)*2;
+    float rxo=(r/w)*2, ryo=(r/h)*2, rxi=((r-thick)/w)*2, ryi=((r-thick)/h)*2;
+    float verts[(32+1)*4]; int segs=32;
+    for(int i=0;i<=segs;i++){
+        float a=(float)i/segs*2*PI, c=cosf(a), s=sinf(a);
+        verts[i*4]=ndcX+c*rxo; verts[i*4+1]=ndcY+s*ryo;
+        verts[i*4+2]=ndcX+c*rxi; verts[i*4+3]=ndcY+s*ryi;
     }
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg, "col"), cr,cg,cb,ca);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts); glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, (segs+1)*2);
+    glUniform4f(glGetUniformLocation(uiProg,"col"),cr,cg,cb,ca);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,verts); glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLE_STRIP,0,(segs+1)*2);
 }
 
 static void draw_circle_ui(float cx, float cy, float r, int w, int h,
                             float cr, float cg, float cb, float ca) {
-    float ndcX = (cx/w)*2-1, ndcY = 1-(cy/h)*2, rx = (r/w)*2, ry = (r/h)*2;
-    float verts[(24+2)*2]; int segs = 24;
-    verts[0] = ndcX; verts[1] = ndcY;
-    for (int i = 0; i <= segs; i++) {
-        float a = (float)i/segs*2*PI;
-        verts[(i+1)*2] = ndcX+cosf(a)*rx; verts[(i+1)*2+1] = ndcY+sinf(a)*ry;
+    float ndcX=(cx/w)*2-1, ndcY=1-(cy/h)*2, rx=(r/w)*2, ry=(r/h)*2;
+    float verts[(24+2)*2]; int segs=24;
+    verts[0]=ndcX; verts[1]=ndcY;
+    for(int i=0;i<=segs;i++){
+        float a=(float)i/segs*2*PI;
+        verts[(i+1)*2]=ndcX+cosf(a)*rx; verts[(i+1)*2+1]=ndcY+sinf(a)*ry;
     }
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg, "col"), cr,cg,cb,ca);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, verts); glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, segs+2);
+    glUniform4f(glGetUniformLocation(uiProg,"col"),cr,cg,cb,ca);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,verts); glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLE_FAN,0,segs+2);
 }
 
 static void draw_border_ui(float cx, float cy, float hw, float hh, float t,
                             int sw, int sh, float cr, float cg, float cb, float ca) {
-    draw_rect_ui(cx, cy-hh+t*0.5f, hw, t*0.5f, sw, sh, cr,cg,cb,ca);
-    draw_rect_ui(cx, cy+hh-t*0.5f, hw, t*0.5f, sw, sh, cr,cg,cb,ca);
-    draw_rect_ui(cx-hw+t*0.5f, cy, t*0.5f, hh, sw, sh, cr,cg,cb,ca);
-    draw_rect_ui(cx+hw-t*0.5f, cy, t*0.5f, hh, sw, sh, cr,cg,cb,ca);
+    draw_rect_ui(cx,cy-hh+t*0.5f,hw,t*0.5f,sw,sh,cr,cg,cb,ca);
+    draw_rect_ui(cx,cy+hh-t*0.5f,hw,t*0.5f,sw,sh,cr,cg,cb,ca);
+    draw_rect_ui(cx-hw+t*0.5f,cy,t*0.5f,hh,sw,sh,cr,cg,cb,ca);
+    draw_rect_ui(cx+hw-t*0.5f,cy,t*0.5f,hh,sw,sh,cr,cg,cb,ca);
 }
 
 void draw_menu(struct engine* eng) {
-    int sw = eng->width, sh = eng->height;
-    draw_rect_ui(sw/2.0f, sh/2.0f, sw/2.0f, sh/2.0f, sw, sh, 0.15f,0.15f,0.2f, 1);
-    float titleY = sh * 0.30f;
-    draw_rect_ui(sw/2.0f, titleY, 140, 35, sw, sh, 0.3f,0.5f,0.9f, 0.9f);
-    draw_border_ui(sw/2.0f, titleY, 140, 35, 3, sw, sh, 0.5f,0.7f,1.0f, 1);
-    float playX = sw/2.0f, playY = sh * 0.55f;
-    draw_rect_ui(playX, playY, 100, 40, sw, sh, 0.2f,0.65f,0.2f, 0.9f);
-    draw_border_ui(playX, playY, 100, 40, 3, sw, sh, 0.4f,1.0f,0.4f, 1);
-    float pnx = (playX/sw)*2-1, pny = 1-(playY/sh)*2;
-    float pax = (22.0f/sw)*2, pay = (22.0f/sh)*2;
-    float play[] = {pnx-pax,pny+pay, pnx-pax,pny-pay, pnx+pax,pny};
+    int sw=eng->width, sh=eng->height;
+    draw_rect_ui(sw/2.0f,sh/2.0f,sw/2.0f,sh/2.0f,sw,sh,0.15f,0.15f,0.2f,1);
+    float titleY=sh*0.30f;
+    draw_rect_ui(sw/2.0f,titleY,140,35,sw,sh,0.3f,0.5f,0.9f,0.9f);
+    draw_border_ui(sw/2.0f,titleY,140,35,3,sw,sh,0.5f,0.7f,1.0f,1);
+    float playX=sw/2.0f, playY=sh*0.55f;
+    draw_rect_ui(playX,playY,100,40,sw,sh,0.2f,0.65f,0.2f,0.9f);
+    draw_border_ui(playX,playY,100,40,3,sw,sh,0.4f,1.0f,0.4f,1);
+    float pnx=(playX/sw)*2-1, pny=1-(playY/sh)*2;
+    float pax=(22.0f/sw)*2, pay=(22.0f/sh)*2;
+    float play[]={pnx-pax,pny+pay, pnx-pax,pny-pay, pnx+pax,pny};
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg, "col"), 1,1,1,1);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, play); glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glUniform4f(glGetUniformLocation(uiProg,"col"),1,1,1,1);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,play); glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLES,0,3);
 }
 
 void draw_ui(struct engine* eng) {
-    int sw = eng->width, sh = eng->height;
+    int sw=eng->width, sh=eng->height;
     glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    if (eng->gameState == STATE_MENU) {
-        draw_menu(eng); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST); return;
-    }
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    if(eng->gameState==STATE_MENU){draw_menu(eng);glDisable(GL_BLEND);glEnable(GL_DEPTH_TEST);return;}
 
-    float jx = JOY_X_OFFSET, jy = sh-JOY_Y_OFFSET;
-    draw_ring_ui(jx, jy, JOY_RADIUS, 3, sw, sh, 1,1,1, 0.5f);
+    float jx=JOY_X_OFFSET, jy=sh-JOY_Y_OFFSET;
+    draw_ring_ui(jx,jy,JOY_RADIUS,3,sw,sh,1,1,1,0.5f);
     draw_circle_ui(jx+eng->moveDirX*JOY_RADIUS*0.6f,
-                   jy+eng->moveDirZ*JOY_RADIUS*0.6f, STICK_RADIUS, sw, sh, 1,1,1, 0.6f);
-
-    float bx = sw-JUMP_BTN_OFFSET, by = sh-JUMP_BTN_OFFSET;
-    draw_ring_ui(bx, by, JUMP_BTN_SIZE, 3, sw, sh, 1,1,1, 0.5f);
-    float as = JUMP_BTN_SIZE*0.3f;
-    float anx = (bx/sw)*2-1, any = 1-(by/sh)*2, aax = (as/sw)*2, aay = (as/sh)*2;
-    float arrow[] = {anx,any+aay, anx-aax,any-aay*0.5f, anx+aax,any-aay*0.5f};
+                   jy+eng->moveDirZ*JOY_RADIUS*0.6f,STICK_RADIUS,sw,sh,1,1,1,0.6f);
+    float bx=sw-JUMP_BTN_OFFSET, by=sh-JUMP_BTN_OFFSET;
+    draw_ring_ui(bx,by,JUMP_BTN_SIZE,3,sw,sh,1,1,1,0.5f);
+    float as=JUMP_BTN_SIZE*0.3f;
+    float anx=(bx/sw)*2-1, any=1-(by/sh)*2, aax=(as/sw)*2, aay=(as/sh)*2;
+    float arrow[]={anx,any+aay, anx-aax,any-aay*0.5f, anx+aax,any-aay*0.5f};
     glUseProgram(uiProg);
-    glUniform4f(glGetUniformLocation(uiProg, "col"), 1,1,1, 0.6f);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, arrow); glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-
+    glUniform4f(glGetUniformLocation(uiProg,"col"),1,1,1,0.6f);
+    glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,arrow); glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLES,0,3);
     glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
 }
 
