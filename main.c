@@ -3,83 +3,152 @@
 #include <GLES2/gl2.h>
 #include <android/log.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "engine.h"
 #include "math_utils.h"
+#include "world.h"
 #include "physics.h"
 #include "input.h"
 #include "render.h"
 
-#define LOG_TAG "Game"
+#define LOG_TAG "Erasez"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+static int64_t now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 static void engine_draw_frame(struct engine* eng) {
-    if (!eng->display) return;
+    if (!eng->display || !eng->surface) return;
+
     eglQuerySurface(eng->display, eng->surface, EGL_WIDTH, &eng->width);
     eglQuerySurface(eng->display, eng->surface, EGL_HEIGHT, &eng->height);
+    if (eng->width <= 0 || eng->height <= 0) return;
     glViewport(0, 0, eng->width, eng->height);
 
+    /* dt (секунды) */
+    int64_t now = now_ms();
+    float dt = eng->lastTickMs ? (float)(now - eng->lastTickMs) / 1000.0f : 0.016f;
+    eng->lastTickMs = now;
+    if (dt < 0.0f) dt = 0.0f;
+    if (dt > 0.05f) dt = 0.05f;
+
     if (eng->gameState == STATE_MENU) {
-        glClearColor(0.15f,0.15f,0.2f,1);
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-        draw_menu(eng); glDisable(GL_BLEND);
-        eglSwapBuffers(eng->display,eng->surface);
+        glClearColor(0.16f, 0.20f, 0.26f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        draw_ui(eng);
+        eglSwapBuffers(eng->display, eng->surface);
         return;
     }
 
-    apply_physics(eng);
-    glClearColor(0.53f,0.81f,0.98f,1);
-    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    render_world(eng);
+    apply_physics(eng, dt);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    render_scene(eng);
     draw_ui(eng);
-    eglSwapBuffers(eng->display,eng->surface);
+    eglSwapBuffers(eng->display, eng->surface);
+}
+
+static void engine_init_gl(struct engine* eng) {
+    if (eng->context == EGL_NO_CONTEXT) {
+        eng->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (eng->display == EGL_NO_DISPLAY) { LOGE("eglGetDisplay failed"); return; }
+        if (!eglInitialize(eng->display, NULL, NULL)) { LOGE("eglInit failed"); return; }
+        EGLConfig config;
+        EGLint n;
+        EGLint att[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+                         EGL_DEPTH_SIZE, 16, EGL_NONE };
+        if (!eglChooseConfig(eng->display, att, &config, 1, &n) || n == 0) {
+            LOGE("eglConfig failed"); return;
+        }
+        eng->eglConfig = config;
+        EGLint ctxAtt[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+        eng->context = eglCreateContext(eng->display, config, NULL, ctxAtt);
+        if (eng->context == EGL_NO_CONTEXT) { LOGE("eglContext failed"); return; }
+    }
+
+    if (eng->surface == EGL_NO_SURFACE) {
+        eng->surface = eglCreateWindowSurface(eng->display, eng->eglConfig,
+                                              eng->app->window, NULL);
+        if (eng->surface == EGL_NO_SURFACE) { LOGE("eglSurface failed"); return; }
+    }
+    if (!eglMakeCurrent(eng->display, eng->surface, eng->surface, eng->context)) {
+        LOGE("eglMakeCurrent failed"); return;
+    }
+
+    if (!eng->worldProgram) {
+        init_game_programs(eng);
+        if (!eng->worldReady) {
+            w_gen(eng);
+            LOGI("world generated: %dx%dx%d", WORLD_X, WORLD_Y, WORLD_Z);
+        }
+        build_world_mesh(eng);
+    }
+    LOGI("engine initialized");
+}
+
+static void engine_term_gl(struct engine* eng) {
+    if (eng->display != EGL_NO_DISPLAY) {
+        if (eng->context != EGL_NO_CONTEXT) {
+            eglMakeCurrent(eng->display, EGL_NO_SURFACE, EGL_NO_SURFACE,
+                           EGL_NO_CONTEXT);
+        }
+        if (eng->surface != EGL_NO_SURFACE) {
+            eglDestroySurface(eng->display, eng->surface);
+            eng->surface = EGL_NO_SURFACE;
+        }
+        if (eng->context != EGL_NO_CONTEXT) {
+            eglDestroyContext(eng->display, eng->context);
+            eng->context = EGL_NO_CONTEXT;
+        }
+        eglTerminate(eng->display);
+        eng->display = EGL_NO_DISPLAY;
+    }
+    eng->worldProgram = 0;
+    eng->skyProgram = 0;
+    eng->uiProgram = 0;
+    eng->worldVBO = 0;
+    eng->skyVBO = 0;
+    eng->worldVerts = 0;
 }
 
 static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     struct engine* eng = (struct engine*)app->userData;
-    if (cmd == APP_CMD_INIT_WINDOW) {
-        eng->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-        if (eng->display==EGL_NO_DISPLAY){LOGE("eglGetDisplay failed");return;}
-        if (!eglInitialize(eng->display,NULL,NULL)){LOGE("eglInit failed");return;}
-        EGLConfig config; EGLint n;
-        EGLint att[]={EGL_RENDERABLE_TYPE,EGL_OPENGL_ES2_BIT,EGL_DEPTH_SIZE,16,EGL_NONE};
-        if (!eglChooseConfig(eng->display,att,&config,1,&n)||n==0){LOGE("eglConfig failed");return;}
-        eng->surface=eglCreateWindowSurface(eng->display,config,eng->app->window,NULL);
-        if (eng->surface==EGL_NO_SURFACE){LOGE("eglSurface failed");return;}
-        EGLint ctxAtt[]={EGL_CONTEXT_CLIENT_VERSION,2,EGL_NONE};
-        eng->context=eglCreateContext(eng->display,config,NULL,ctxAtt);
-        if (eng->context==EGL_NO_CONTEXT){LOGE("eglContext failed");return;}
-        if (!eglMakeCurrent(eng->display,eng->surface,eng->surface,eng->context)){LOGE("eglMakeCurrent failed");return;}
-
-        init_color_shader(eng);
-        init_tex_shader(eng);
-        init_ui_shader();
-        init_cube_vbo();
-        init_platform_vbo();
-        init_textures(eng);
-        init_world_blocks(eng);
-        LOGI("Engine initialized");
+    switch (cmd) {
+        case APP_CMD_INIT_WINDOW:
+            engine_init_gl(eng);
+            break;
+        case APP_CMD_TERM_WINDOW:
+            engine_term_gl(eng);
+            break;
+        default:
+            break;
     }
 }
 
 void android_main(struct android_app* state) {
-    struct engine eng = {0};
+    struct engine eng;
+    memset(&eng, 0, sizeof(eng));
     eng.movePointerId = -1;
     eng.lookPointerId = -1;
+    eng.jumpPointerId = -1;
+    eng.downPointerId = -1;
     eng.gameState = STATE_MENU;
-    eng.joyTouched = false;
+    eng.app = state;
+    eng.lastTickMs = 0;
     state->userData = &eng;
     state->onAppCmd = engine_handle_cmd;
     state->onInputEvent = engine_handle_input;
-    eng.app = state;
 
     while (1) {
-        int ev; struct android_poll_source* s;
-        while (ALooper_pollOnce(0,NULL,&ev,(void**)&s) >= 0) {
-            if (s) s->process(state,s);
+        int ev;
+        struct android_poll_source* s;
+        while (ALooper_pollOnce(0, NULL, &ev, (void**)&s) >= 0) {
+            if (s) s->process(state, s);
             if (state->destroyRequested) return;
         }
         engine_draw_frame(&eng);
