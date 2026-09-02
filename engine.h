@@ -2,10 +2,10 @@
 #define ENGINE_H
 
 #include <android_native_app_glue.h>
-#include <EGL/egl.h>
-#include <GLES2/gl2.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "webgpu.h"
+#include "wgpu.h"
 
 /* ================= ВОКСЕЛЬНЫЙ МИР ================= */
 #define WORLD_X  96            /* блоков по X            */
@@ -51,17 +51,40 @@ enum {
 #define MAX_STEP    1.05f      /* автоподъём ступеньки */
 #define GAME_FOV    1.15f      /* радианы */
 
+/* Общий uniform-буфер (std140): 88 байт, создаём 256. */
+#define UB_SIZE 256
+
+struct wgpu_ctx {
+    WGPUInstance instance;
+    WGPUSurface surface;
+    WGPUAdapter adapter;
+    WGPUDevice device;
+    WGPUQueue queue;
+    WGPUTextureFormat fmt;
+
+    bool active;                 /* окно живо, ресурсы созданы */
+
+    WGPUShaderModule shWorld, shSky, shUi;
+    WGPUBindGroupLayout bgl;
+    WGPUPipelineLayout layWorld, laySky, layUi;
+    WGPURenderPipeline pipeWorld, pipeSky, pipeUi;
+    WGPUBindGroup bgWorld, bgSky, bgUi;
+
+    WGPUBuffer bufWorld;         /* меш мира (vertex)       */
+    int worldVerts;
+    WGPUBuffer bufUi;            /* вершины UI (пересоздаётся в кадре) */
+    uint32_t uiVerts;
+    WGPUBuffer ubCam;            /* общий uniform           */
+    WGPUBuffer ubSky;            /* uniform неба            */
+
+    WGPUTexture texDepth;
+    WGPUTextureView viewDepth;
+};
+
 struct engine {
     struct android_app* app;
-    EGLDisplay display;
-    EGLSurface surface;
-    EGLContext context;
-    EGLConfig eglConfig;
-    int32_t width, height;
-
-    GLuint worldProgram, skyProgram, uiProgram;
-    GLuint worldVBO, skyVBO;
-    int worldVerts;
+    struct wgpu_ctx wg;
+    int32_t width, height;      /* текущий размер окна (пиксели) */
 
     unsigned char* blocks;      /* [y][z][x] -> y*WORLD_Z*WORLD_X + z*WORLD_X + x */
 

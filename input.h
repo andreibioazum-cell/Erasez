@@ -2,6 +2,7 @@
 #define INPUT_H
 
 #include <android_native_app_glue.h>
+#include <stdint.h>
 #include <math.h>
 #include "engine.h"
 
