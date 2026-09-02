@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" 
           package="com.geometrium.game"
-          android:versionCode="1"
-          android:versionName="1.0">
+          android:versionCode="2"
+          android:versionName="2.0">
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
     
-    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <!-- wgpu-native рендерит через Vulkan -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="false" />
+    <uses-feature android:name="android.hardware.vulkan.version"
+                  android:version="0x00400000" android:required="false" />
 
     <application 
-        android:label="Geometrium" 
+        android:label="Erasez" 
         android:hasCode="false" 
         android:icon="@android:drawable/ic_dialog_map"
         android:extractNativeLibs="true">

@@ -10,11 +10,13 @@ static void mat4_identity(float* m) {
 }
 
 static void mat4_perspective(float* m, float fov, float aspect, float n, float f) {
+    /* WebGPU/Vulkan: NDC z в [0,1], NDC y направлен вниз — умножаем
+       y на -1, чтобы сцена выглядела так же, как в GL (y вверх). */
     float S = 1.0f / tanf(fov * 0.5f);
     memset(m, 0, 64);
-    m[0] = S / aspect; m[5] = S;
-    m[10] = (f + n) / (n - f); m[11] = -1.0f;
-    m[14] = (2.0f * f * n) / (n - f);
+    m[0] = S / aspect; m[5] = -S;
+    m[10] = f / (n - f); m[11] = -1.0f;
+    m[14] = (n * f) / (n - f);
 }
 
 static void mat4_rotate_y(float* m, float a) {
