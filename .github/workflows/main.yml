@@ -1,6 +1,9 @@
-name: Build Geometrium
+name: Build Erasez (WebGPU)
 
 on: [push, workflow_dispatch]
+
+env:
+  WGPU_VERSION: v29.0.1.1
 
 jobs:
   build:
@@ -12,27 +15,42 @@ jobs:
     - uses: nttld/setup-ndk@v1
       with:
         ndk-version: r25c
-    - name: Get STB
-      run: wget -O stb_image.h https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
+
+    - name: Get wgpu-native (Android)
+      run: |
+        curl -fL -o wgpu-aarch64.zip https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/wgpu-android-aarch64-release.zip
+        curl -fL -o wgpu-armv7.zip   https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/wgpu-android-armv7-release.zip
+        mkdir -p wgpu/aarch64 wgpu/armv7
+        unzip -q wgpu-aarch64.zip -d wgpu/aarch64
+        unzip -q wgpu-armv7.zip   -d wgpu/armv7
+        # внутри архива: include/webgpu/{webgpu.h,wgpu.h}, lib/libwgpu_native.{so,a}
+        test -f wgpu/aarch64/lib/libwgpu_native.so
+        test -f wgpu/armv7/lib/libwgpu_native.so
+
     - name: Build
       run: |
         TOOLCHAIN=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin
         GLUE=$ANDROID_NDK_ROOT/sources/android/native_app_glue
-        FLAGS="-O2 -s -fPIC -shared -I. -I$GLUE -landroid -llog -lGLESv2 -lEGL -lm"
-        $TOOLCHAIN/aarch64-linux-android21-clang main.c $GLUE/android_native_app_glue.c -o libmain_64.so $FLAGS
-        $TOOLCHAIN/armv7a-linux-androideabi21-clang main.c $GLUE/android_native_app_glue.c -o libmain_32.so $FLAGS
+        FLAGS="-O2 -s -fPIC -shared -I. -Iinclude/webgpu -I$GLUE -landroid -llog -lm"
+        $TOOLCHAIN/aarch64-linux-android21-clang main.c $GLUE/android_native_app_glue.c \
+          -Lwgpu/aarch64/lib -lwgpu_native -o libmain_64.so $FLAGS
+        $TOOLCHAIN/armv7a-linux-androideabi21-clang main.c $GLUE/android_native_app_glue.c \
+          -Lwgpu/armv7/lib -lwgpu_native -o libmain_32.so $FLAGS
+
     - name: Package
       run: |
-        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a staging/assets
+        mkdir -p staging/lib/arm64-v8a staging/lib/armeabi-v7a
         cp libmain_64.so staging/lib/arm64-v8a/libmain.so
         cp libmain_32.so staging/lib/armeabi-v7a/libmain.so
-        cp *.png staging/assets/ 2>/dev/null || true
+        cp wgpu/aarch64/lib/libwgpu_native.so staging/lib/arm64-v8a/
+        cp wgpu/armv7/lib/libwgpu_native.so staging/lib/armeabi-v7a/
         BT=$ANDROID_HOME/build-tools/34.0.0
         $BT/aapt package -f -M AndroidManifest.xml -I $ANDROID_HOME/platforms/android-34/android.jar -F unsigned.apk staging/
-        $BT/zipalign -v 4 unsigned.apk aligned.apk
+        $BT/zipalign -f 4 unsigned.apk aligned.apk
         keytool -genkey -v -keystore d.keystore -storepass android -alias a -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=D"
-        $BT/apksigner sign --ks d.keystore --ks-pass pass:android --out Geometrium.apk aligned.apk
+        $BT/apksigner sign --ks d.keystore --ks-pass pass:android --out Erasez.apk aligned.apk
+
     - uses: actions/upload-artifact@v4
       with:
-        name: Geometrium
-        path: Geometrium.apk
+        name: Erasez
+        path: Erasez.apk
